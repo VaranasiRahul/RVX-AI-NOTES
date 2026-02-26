@@ -75,7 +75,8 @@ function TopicCard({
   const preview = body.split('\n').slice(0, 4).join('\n').trim();
 
   return (
-    <Animated.View entering={FadeInDown.delay(400).springify()} style={animStyle}>
+    <Animated.View entering={FadeInDown.delay(400).springify()}>
+      <Animated.View style={animStyle}>
       <TouchableOpacity
         activeOpacity={1}
         onPressIn={() => { scale.value = withSpring(0.97); }}
@@ -108,6 +109,7 @@ function TopicCard({
           </View>
         </View>
       </TouchableOpacity>
+      </Animated.View>
     </Animated.View>
   );
 }
