@@ -1,169 +1,246 @@
-import React, { useEffect, useRef } from "react";
+import React, { useState, useCallback, useRef, useMemo, useEffect } from "react";
 import {
   View,
   Text,
   StyleSheet,
   TouchableOpacity,
-  ScrollView,
+  FlatList,
   Platform,
   ActivityIndicator,
   RefreshControl,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { router } from "expo-router";
-import Animated, {
-  useSharedValue,
-  useAnimatedStyle,
-  withSpring,
-  withTiming,
-  FadeIn,
-  FadeInDown,
-} from "react-native-reanimated";
+import Animated, { FadeIn, FadeInDown } from "react-native-reanimated";
 import * as Haptics from "expo-haptics";
 import { Ionicons } from "@expo/vector-icons";
-import { useNotes } from "@/context/NotesContext";
+import { useNotes, parseTopics, Note, Folder } from "@/context/NotesContext";
 import Colors from "@/constants/colors";
 
-function StreakBadge({ count }: { count: number }) {
-  return (
-    <Animated.View entering={FadeIn.delay(200)} style={styles.streakBadge}>
-      <Ionicons name="flame" size={14} color={Colors.streak} />
-      <Text style={styles.streakBadgeText}>{count} day streak</Text>
-    </Animated.View>
-  );
-}
+const PAGE_SIZE = 8;
 
-function EmptyState({ onGoToFolders }: { onGoToFolders: () => void }) {
-  return (
-    <Animated.View entering={FadeInDown.delay(300)} style={styles.emptyContainer}>
-      <Ionicons name="book-outline" size={56} color={Colors.textMuted} />
-      <Text style={styles.emptyTitle}>No notes yet</Text>
-      <Text style={styles.emptySubtitle}>
-        Create a folder and add notes to start your daily revision practice.
-      </Text>
-      <TouchableOpacity style={styles.emptyButton} onPress={onGoToFolders}>
-        <Text style={styles.emptyButtonText}>Go to Folders</Text>
-      </TouchableOpacity>
-    </Animated.View>
-  );
-}
-
-function TopicCard({
-  title,
-  body,
-  noteId,
-  folderId,
-  topicIndex,
-  folderName,
-  folderColor,
-  onPress,
-}: {
+interface FeedItem {
+  id: string;
   title: string;
-  body: string;
+  bodyRaw: string;
   noteId: string;
+  noteTitle: string;
   folderId: string;
-  topicIndex: number;
   folderName: string;
   folderColor: string;
-  onPress: () => void;
-}) {
-  const scale = useSharedValue(1);
-  const animStyle = useAnimatedStyle(() => ({
-    transform: [{ scale: scale.value }],
-  }));
+  topicIndex: number;
+}
 
-  const preview = body.split('\n').slice(0, 4).join('\n').trim();
+function stripMarkdown(text: string): string {
+  return text
+    .replace(/#{1,6}\s+/g, "")
+    .replace(/(\*\*|__)(.*?)\1/g, "$2")
+    .replace(/(\*|_)(.*?)\1/g, "$2")
+    .replace(/~~(.*?)~~/g, "$1")
+    .replace(/`{1,3}[^`]*`{1,3}/g, "")
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1")
+    .replace(/^[-*+]\s+/gm, "")
+    .replace(/^\d+\.\s+/gm, "")
+    .replace(/^>\s+/gm, "")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
+function buildAllTopics(notes: Note[], folders: Folder[]): FeedItem[] {
+  const items: FeedItem[] = [];
+  for (const note of notes) {
+    const folder = folders.find(f => f.id === note.folderId);
+    if (!folder) continue;
+    const topics = parseTopics(note);
+    topics.forEach((topic, i) => {
+      items.push({
+        id: `${note.id}-${i}`,
+        title: topic.title,
+        bodyRaw: topic.body,
+        noteId: note.id,
+        noteTitle: note.title,
+        folderId: note.folderId,
+        folderName: folder.name,
+        folderColor: folder.color,
+        topicIndex: i,
+      });
+    });
+  }
+  return items;
+}
+
+function shuffle<T>(arr: T[]): T[] {
+  const a = [...arr];
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+
+function FeedCard({ item, index, onPress }: { item: FeedItem; index: number; onPress: () => void }) {
+  const preview = stripMarkdown(item.bodyRaw);
+  const previewLines = preview.split('\n').filter(l => l.trim()).slice(0, 5).join(' ');
 
   return (
-    <Animated.View entering={FadeInDown.delay(400).springify()}>
-      <Animated.View style={animStyle}>
+    <Animated.View entering={FadeInDown.delay(Math.min(index % PAGE_SIZE, 5) * 60).springify()}>
       <TouchableOpacity
-        activeOpacity={1}
-        onPressIn={() => { scale.value = withSpring(0.97); }}
-        onPressOut={() => { scale.value = withSpring(1); }}
+        style={styles.card}
         onPress={() => {
-          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
           onPress();
         }}
+        activeOpacity={0.85}
       >
-        <View style={styles.card}>
-          <View style={styles.cardAccentBar} />
-
-          <View style={styles.cardHeader}>
-            <View style={[styles.folderTag, { backgroundColor: folderColor + '22' }]}>
-              <View style={[styles.folderDot, { backgroundColor: folderColor }]} />
-              <Text style={[styles.folderTagText, { color: folderColor }]}>{folderName}</Text>
-            </View>
-            <Ionicons name="chevron-forward" size={18} color={Colors.textMuted} />
+        <View style={styles.cardTop}>
+          <View style={[styles.folderTag, { backgroundColor: item.folderColor + '20' }]}>
+            <View style={[styles.folderDot, { backgroundColor: item.folderColor }]} />
+            <Text style={[styles.folderTagText, { color: item.folderColor }]} numberOfLines={1}>
+              {item.folderName}
+            </Text>
           </View>
+        </View>
 
-          <Text style={styles.cardTitle}>{title}</Text>
+        <Text style={styles.cardTitle} numberOfLines={2}>{item.title}</Text>
 
-          {preview.length > 0 && (
-            <Text style={styles.cardPreview} numberOfLines={4}>{preview}</Text>
-          )}
+        {previewLines.length > 0 && (
+          <Text style={styles.cardPreview} numberOfLines={5}>{previewLines}</Text>
+        )}
 
-          <View style={styles.cardFooter}>
-            <Ionicons name="eye-outline" size={14} color={Colors.textMuted} />
-            <Text style={styles.cardFooterText}>Tap to read full notes</Text>
+        <View style={styles.cardBottom}>
+          <View style={styles.cardBottomLeft}>
+            <Ionicons name="document-text-outline" size={12} color={Colors.textMuted} />
+            <Text style={styles.noteNameText} numberOfLines={1}>{item.noteTitle}</Text>
+          </View>
+          <View style={styles.readMoreBtn}>
+            <Text style={styles.readMoreText}>Read More</Text>
+            <Ionicons name="arrow-forward" size={12} color={Colors.accent} />
           </View>
         </View>
       </TouchableOpacity>
-      </Animated.View>
     </Animated.View>
+  );
+}
+
+function StreakHeader({ currentStreak, totalTopics }: { currentStreak: number; totalTopics: number }) {
+  return (
+    <View style={styles.feedHeader}>
+      <View style={styles.feedHeaderLeft}>
+        <Text style={styles.feedTitle}>Feed</Text>
+        <Text style={styles.feedSubtitle}>{totalTopics} topics • scroll to explore</Text>
+      </View>
+      {currentStreak > 0 && (
+        <View style={styles.streakBadge}>
+          <Ionicons name="flame" size={14} color={Colors.streak} />
+          <Text style={styles.streakText}>{currentStreak}</Text>
+        </View>
+      )}
+    </View>
+  );
+}
+
+function FooterLoader({ loading }: { loading: boolean }) {
+  if (!loading) return null;
+  return (
+    <View style={styles.footer}>
+      <ActivityIndicator color={Colors.accent} size="small" />
+    </View>
   );
 }
 
 export default function TodayScreen() {
   const insets = useSafeAreaInsets();
-  const { streak, isLoading, getDailyTopicData, rollDailyTopic, markRevised, folders, notes } = useNotes();
-  const [refreshing, setRefreshing] = React.useState(false);
-  const [hasRevised, setHasRevised] = React.useState(false);
+  const { streak, isLoading, notes, folders } = useNotes();
 
-  const topic = getDailyTopicData();
-  const folder = topic ? folders.find(f => f.id === topic.folderId) : null;
+  const allTopics = useMemo(() => buildAllTopics(notes, folders), [notes, folders]);
+  const [feedItems, setFeedItems] = useState<(FeedItem & { feedKey: string })[]>([]);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+  const batchRef = useRef(0);
+
+  const loadInitialFeed = useCallback((topics: FeedItem[]) => {
+    if (topics.length === 0) {
+      setFeedItems([]);
+      return;
+    }
+    batchRef.current = 0;
+    const shuffled = shuffle(topics);
+    setFeedItems(shuffled.slice(0, PAGE_SIZE).map((t, i) => ({ ...t, feedKey: `b0-${i}-${t.id}` })));
+  }, []);
+
+  const loadMoreItems = useCallback(() => {
+    if (loadingMore || allTopics.length === 0) return;
+    setLoadingMore(true);
+    setTimeout(() => {
+      batchRef.current += 1;
+      const batch = batchRef.current;
+      const shuffled = shuffle(allTopics);
+      const newItems = shuffled.slice(0, PAGE_SIZE).map((t, i) => ({
+        ...t,
+        feedKey: `b${batch}-${i}-${t.id}`,
+      }));
+      setFeedItems(prev => [...prev, ...newItems]);
+      setLoadingMore(false);
+    }, 400);
+  }, [loadingMore, allTopics]);
 
   useEffect(() => {
-    const today = new Date().toISOString().split('T')[0];
-    if (streak.history.includes(today)) {
-      setHasRevised(true);
-    }
-  }, [streak.history]);
+    loadInitialFeed(allTopics);
+  }, [allTopics]);
 
   const handleRefresh = async () => {
     setRefreshing(true);
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    await rollDailyTopic();
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    await new Promise(r => setTimeout(r, 500));
+    loadInitialFeed(allTopics);
     setRefreshing(false);
-  };
-
-  const handleRevised = async () => {
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    await markRevised();
-    setHasRevised(true);
   };
 
   const topPad = Platform.OS === "web" ? 67 : insets.top;
 
   if (isLoading) {
     return (
-      <View style={[styles.loadingContainer, { backgroundColor: Colors.background }]}>
-        <ActivityIndicator color={Colors.accent} size="large" />
+      <View style={[styles.container, { paddingTop: topPad }]}>
+        <ActivityIndicator color={Colors.accent} size="large" style={{ marginTop: 60 }} />
       </View>
     );
   }
 
-  const hasNotes = notes.length > 0;
+  if (notes.length === 0) {
+    return (
+      <View style={[styles.container, { paddingTop: topPad }]}>
+        <StreakHeader currentStreak={streak.currentStreak} totalTopics={0} />
+        <Animated.View entering={FadeInDown.delay(200)} style={styles.emptyContainer}>
+          <Ionicons name="book-outline" size={60} color={Colors.textMuted} />
+          <Text style={styles.emptyTitle}>No notes yet</Text>
+          <Text style={styles.emptySubtitle}>
+            Head to Folders, create a folder, add a note and start writing.
+          </Text>
+          <TouchableOpacity
+            style={styles.emptyButton}
+            onPress={() => router.push("/(tabs)/folders")}
+          >
+            <Ionicons name="folder-open" size={16} color={Colors.background} />
+            <Text style={styles.emptyButtonText}>Open Folders</Text>
+          </TouchableOpacity>
+        </Animated.View>
+      </View>
+    );
+  }
 
   return (
     <View style={[styles.container, { paddingTop: topPad }]}>
-      <ScrollView
-        style={styles.scroll}
+      <FlatList
+        data={feedItems}
+        keyExtractor={item => item.feedKey}
         contentContainerStyle={[
-          styles.scrollContent,
-          { paddingBottom: Platform.OS === "web" ? 100 : 100 },
+          styles.listContent,
+          { paddingBottom: Platform.OS === "web" ? 120 : 120 },
         ]}
         showsVerticalScrollIndicator={false}
+        onEndReached={loadMoreItems}
+        onEndReachedThreshold={0.4}
+        scrollEnabled={!!feedItems.length}
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
@@ -172,71 +249,27 @@ export default function TodayScreen() {
             colors={[Colors.accent]}
           />
         }
-      >
-        <Animated.View entering={FadeIn.duration(600)}>
-          <View style={styles.headerRow}>
-            <View>
-              <Text style={styles.dateLabel}>
-                {new Date().toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" })}
-              </Text>
-              <Text style={styles.headerTitle}>Daily Revision</Text>
-            </View>
-            {streak.currentStreak > 0 && <StreakBadge count={streak.currentStreak} />}
-          </View>
-        </Animated.View>
-
-        {!hasNotes ? (
-          <EmptyState onGoToFolders={() => router.push("/(tabs)/folders")} />
-        ) : topic && folder ? (
-          <>
-            <TopicCard
-              title={topic.title}
-              body={topic.body}
-              noteId={topic.noteId}
-              folderId={topic.folderId}
-              topicIndex={topic.topicIndex}
-              folderName={folder.name}
-              folderColor={folder.color}
-              onPress={() =>
-                router.push({
-                  pathname: "/topic/[folderId]/[noteId]/[topicIndex]",
-                  params: {
-                    folderId: topic.folderId,
-                    noteId: topic.noteId,
-                    topicIndex: String(topic.topicIndex),
-                  },
-                })
-              }
-            />
-
-            <Animated.View entering={FadeInDown.delay(600)} style={styles.actions}>
-              {!hasRevised ? (
-                <TouchableOpacity style={styles.revisedButton} onPress={handleRevised}>
-                  <Ionicons name="checkmark-circle" size={20} color={Colors.background} />
-                  <Text style={styles.revisedButtonText}>Mark as Revised</Text>
-                </TouchableOpacity>
-              ) : (
-                <View style={styles.revisedDone}>
-                  <Ionicons name="checkmark-circle" size={20} color={Colors.success} />
-                  <Text style={styles.revisedDoneText}>Revised today!</Text>
-                </View>
-              )}
-
-              <TouchableOpacity style={styles.rollButton} onPress={handleRefresh}>
-                <Ionicons name="shuffle" size={18} color={Colors.accent} />
-                <Text style={styles.rollButtonText}>New Topic</Text>
-              </TouchableOpacity>
-            </Animated.View>
-
-            <Animated.View entering={FadeInDown.delay(700)} style={styles.hint}>
-              <Ionicons name="arrow-down" size={13} color={Colors.textMuted} />
-              <Text style={styles.hintText}>Pull down to get a new random topic</Text>
-            </Animated.View>
-          </>
-        ) : (
-          <EmptyState onGoToFolders={() => router.push("/(tabs)/folders")} />
+        ListHeaderComponent={
+          <StreakHeader currentStreak={streak.currentStreak} totalTopics={allTopics.length} />
+        }
+        ListFooterComponent={<FooterLoader loading={loadingMore} />}
+        renderItem={({ item, index }) => (
+          <FeedCard
+            item={item}
+            index={index}
+            onPress={() =>
+              router.push({
+                pathname: "/topic/[folderId]/[noteId]/[topicIndex]",
+                params: {
+                  folderId: item.folderId,
+                  noteId: item.noteId,
+                  topicIndex: String(item.topicIndex),
+                },
+              })
+            }
+          />
         )}
-      </ScrollView>
+      />
     </View>
   );
 }
@@ -246,192 +279,133 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: Colors.background,
   },
-  loadingContainer: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
+  listContent: {
+    paddingHorizontal: 16,
+    gap: 12,
+    paddingTop: 4,
   },
-  scroll: { flex: 1 },
-  scrollContent: {
-    paddingHorizontal: 20,
-    paddingTop: 8,
-  },
-  headerRow: {
+  feedHeader: {
     flexDirection: "row",
-    alignItems: "flex-start",
+    alignItems: "center",
     justifyContent: "space-between",
-    marginBottom: 28,
+    paddingHorizontal: 4,
+    paddingTop: 8,
+    paddingBottom: 16,
   },
-  dateLabel: {
-    fontFamily: "DMSans_400Regular",
-    fontSize: 13,
-    color: Colors.textSecondary,
-    marginBottom: 4,
-    textTransform: "uppercase",
-    letterSpacing: 1,
+  feedHeaderLeft: {
+    gap: 2,
   },
-  headerTitle: {
+  feedTitle: {
     fontFamily: "PlayfairDisplay_700Bold",
     fontSize: 28,
     color: Colors.text,
     letterSpacing: 0.3,
   },
+  feedSubtitle: {
+    fontFamily: "DMSans_400Regular",
+    fontSize: 12,
+    color: Colors.textMuted,
+  },
   streakBadge: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 5,
+    gap: 4,
     backgroundColor: Colors.streak + "22",
+    borderWidth: 1,
+    borderColor: Colors.streak + "44",
     paddingHorizontal: 10,
     paddingVertical: 6,
     borderRadius: 20,
-    borderWidth: 1,
-    borderColor: Colors.streak + "44",
   },
-  streakBadgeText: {
-    fontFamily: "DMSans_500Medium",
-    fontSize: 12,
+  streakText: {
+    fontFamily: "DMSans_600SemiBold",
+    fontSize: 14,
     color: Colors.streak,
   },
   card: {
     backgroundColor: Colors.card,
-    borderRadius: 20,
+    borderRadius: 16,
     borderWidth: 1,
     borderColor: Colors.border,
-    padding: 24,
-    overflow: "hidden",
-    position: "relative",
+    padding: 18,
+    gap: 10,
   },
-  cardAccentBar: {
-    position: "absolute",
-    top: 0,
-    left: 0,
-    right: 0,
-    height: 3,
-    backgroundColor: Colors.accent,
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-  },
-  cardHeader: {
+  cardTop: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "space-between",
-    marginBottom: 16,
-    marginTop: 4,
   },
   folderTag: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 6,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
+    gap: 5,
+    paddingHorizontal: 9,
+    paddingVertical: 3,
     borderRadius: 20,
   },
   folderDot: {
-    width: 6,
-    height: 6,
+    width: 5,
+    height: 5,
     borderRadius: 3,
   },
   folderTagText: {
-    fontFamily: "DMSans_500Medium",
-    fontSize: 12,
+    fontFamily: "DMSans_600SemiBold",
+    fontSize: 11,
+    letterSpacing: 0.3,
   },
   cardTitle: {
     fontFamily: "PlayfairDisplay_700Bold",
-    fontSize: 24,
+    fontSize: 20,
     color: Colors.text,
-    marginBottom: 14,
-    lineHeight: 32,
+    lineHeight: 27,
+    letterSpacing: 0.1,
   },
   cardPreview: {
     fontFamily: "DMSans_400Regular",
-    fontSize: 15,
+    fontSize: 14,
     color: Colors.textSecondary,
-    lineHeight: 24,
-    marginBottom: 20,
+    lineHeight: 22,
   },
-  cardFooter: {
+  cardBottom: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 6,
-    paddingTop: 16,
+    justifyContent: "space-between",
+    paddingTop: 10,
     borderTopWidth: 1,
     borderTopColor: Colors.border,
   },
-  cardFooterText: {
+  cardBottomLeft: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    flex: 1,
+  },
+  noteNameText: {
     fontFamily: "DMSans_400Regular",
-    fontSize: 12,
+    fontSize: 11,
     color: Colors.textMuted,
-  },
-  actions: {
-    flexDirection: "row",
-    gap: 12,
-    marginTop: 20,
-  },
-  revisedButton: {
     flex: 1,
+  },
+  readMoreBtn: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "center",
-    gap: 8,
-    backgroundColor: Colors.accent,
-    paddingVertical: 14,
-    borderRadius: 14,
+    gap: 4,
   },
-  revisedButtonText: {
+  readMoreText: {
     fontFamily: "DMSans_600SemiBold",
-    fontSize: 15,
-    color: Colors.background,
-  },
-  revisedDone: {
-    flex: 1,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 8,
-    backgroundColor: Colors.success + "22",
-    paddingVertical: 14,
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: Colors.success + "44",
-  },
-  revisedDoneText: {
-    fontFamily: "DMSans_600SemiBold",
-    fontSize: 15,
-    color: Colors.success,
-  },
-  rollButton: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 6,
-    paddingHorizontal: 20,
-    paddingVertical: 14,
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    backgroundColor: Colors.surface,
-  },
-  rollButtonText: {
-    fontFamily: "DMSans_500Medium",
-    fontSize: 14,
+    fontSize: 12,
     color: Colors.accent,
   },
-  hint: {
-    flexDirection: "row",
+  footer: {
+    paddingVertical: 20,
     alignItems: "center",
-    justifyContent: "center",
-    gap: 6,
-    marginTop: 16,
-  },
-  hintText: {
-    fontFamily: "DMSans_400Regular",
-    fontSize: 12,
-    color: Colors.textMuted,
   },
   emptyContainer: {
+    flex: 1,
     alignItems: "center",
-    paddingTop: 60,
+    justifyContent: "center",
+    paddingHorizontal: 32,
     gap: 12,
+    marginTop: -40,
   },
   emptyTitle: {
     fontFamily: "PlayfairDisplay_600SemiBold",
@@ -441,16 +415,18 @@ const styles = StyleSheet.create({
   },
   emptySubtitle: {
     fontFamily: "DMSans_400Regular",
-    fontSize: 15,
+    fontSize: 14,
     color: Colors.textSecondary,
     textAlign: "center",
     lineHeight: 22,
-    paddingHorizontal: 24,
   },
   emptyButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
     marginTop: 8,
-    paddingHorizontal: 28,
-    paddingVertical: 12,
+    paddingHorizontal: 24,
+    paddingVertical: 13,
     backgroundColor: Colors.accent,
     borderRadius: 30,
   },
