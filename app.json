@@ -1,7 +1,7 @@
 {
   "expo": {
-    "name": "ReviseIt",
-    "slug": "reviseit",
+    "name": "RVX | Notes",
+    "slug": "reviseit-3fm53g",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
@@ -37,11 +37,21 @@
         }
       ],
       "expo-font",
-      "expo-web-browser"
+      "expo-web-browser",
+      "onnxruntime-react-native"
     ],
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
-    }
+    },
+    "extra": {
+      "router": {
+        "origin": "https://replit.com/"
+      },
+      "eas": {
+        "projectId": "2703e46b-4da4-4446-8bcd-d9c24c40de0c"
+      }
+    },
+    "owner": "rahul-varanasi"
   }
 }
