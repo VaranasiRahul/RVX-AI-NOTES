@@ -55,7 +55,7 @@
               "targetCellWidth": 4,
               "targetCellHeight": 2,
               "updatePeriodMillis": 3600000,
-              "resizeMode": "horizontal_vertical"
+              "resizeMode": "horizontal|vertical"
             }
           ]
         }
