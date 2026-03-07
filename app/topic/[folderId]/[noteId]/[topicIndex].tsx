@@ -13,7 +13,7 @@ import Animated, { FadeIn, FadeInDown, useSharedValue, withSequence, withTiming,
 import * as Haptics from "expo-haptics";
 import { Ionicons } from "@expo/vector-icons";
 import Markdown from "react-native-markdown-display";
-import { useNotes, parseTopics, SRRating } from "@/context/NotesContext";
+import { useNotes, parseTopics, SRRating, getTopicKey } from "@/context/NotesContext";
 import { useTheme } from "@/context/ThemeContext";
 
 export default function TopicDetailScreen() {
@@ -23,7 +23,7 @@ export default function TopicDetailScreen() {
     topicIndex: string;
   }>();
   const insets = useSafeAreaInsets();
-  const { notes, folders, markRevised, streak, rateTopic, getTopicProgress } = useNotes();
+  const { notes, folders, markRevised, streak, rateTopic, getTopicProgress, markedTopics, toggleTopicMark } = useNotes();
   const { colors: Colors } = useTheme();
 
   const note = notes.find((n) => n.id === noteId);
@@ -96,12 +96,18 @@ export default function TopicDetailScreen() {
     });
   };
 
-  const handleRate = async (rating: SRRating) => {
+  const isMarked = !!markedTopics[getTopicKey(note.id, index)];
+
+  const handleRate = async (rating: SRRating | 'story') => {
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     ratingScale.value = withSequence(withTiming(0.95, { duration: 80 }), withTiming(1, { duration: 120 }));
-    await rateTopic(note.id, index, rating);
-    setRatingDone(true);
-    setRatingDone(true);
+
+    if (rating === 'story') {
+      await toggleTopicMark(note.id, index);
+    } else {
+      await rateTopic(note.id, index, rating);
+      setRatingDone(true);
+    }
   };
 
   const markdownStyles = StyleSheet.create({
@@ -131,10 +137,10 @@ export default function TopicDetailScreen() {
     td: { fontFamily: "DMSans_400Regular", fontSize: 13, color: Colors.textSecondary, padding: 10, borderRightWidth: 1, borderRightColor: Colors.border, flex: 1 },
   });
 
-  const ratingButtons: { label: string; rating: SRRating; color: string; icon: string }[] = [
-    { label: "Again", rating: "again", color: Colors.error, icon: "refresh" },
-    { label: "Hard", rating: "hard", color: Colors.warning, icon: "alert-circle-outline" },
-    { label: "Good", rating: "good", color: Colors.accent, icon: "thumbs-up-outline" },
+  const ratingButtons: { label: string; rating: SRRating | 'story'; color: string; icon: string }[] = [
+    { label: "Story", rating: "story", color: Colors.accent, icon: isMarked ? "bookmark" : "bookmark-outline" },
+    { label: "Easy", rating: "easy", color: Colors.success, icon: "checkmark-circle-outline" },
+    { label: "Hard", rating: "hard", color: Colors.error, icon: "alert-circle-outline" },
   ];
 
   return (
@@ -153,8 +159,8 @@ export default function TopicDetailScreen() {
           )}
           <Text style={[styles.topicCounter, { color: Colors.textMuted }]}>{index + 1} of {topics.length}</Text>
         </View>
-        <TouchableOpacity style={styles.editButton} onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); router.push({ pathname: "/note/[id]", params: { id: note.id } }); }}>
-          <Ionicons name="create-outline" size={20} color={Colors.accent} />
+        <TouchableOpacity style={styles.headerOpenButton} onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); router.push({ pathname: "/note/[id]", params: { id: note.id } }); }}>
+          <Text style={[styles.headerOpenText, { color: Colors.accent }]}>Open</Text>
         </TouchableOpacity>
       </Animated.View>
 
@@ -184,25 +190,28 @@ export default function TopicDetailScreen() {
           {ratingDone ? (progress?.lastRating ? `Rated: ${progress.lastRating} · next in ${progress?.interval ?? 1}d` : "Rate this topic") : "How well did you know this?"}
         </Text>
         <Animated.View style={[styles.ratingRow, ratingDone ? ratingAnimStyle : {}]}>
-          {ratingButtons.map(({ label, rating, color, icon }) => (
-            <TouchableOpacity
-              key={rating}
-              style={[
-                styles.ratingBtn,
-                {
-                  backgroundColor: progress?.lastRating === rating ? color + "30" : Colors.surface,
-                  borderColor: progress?.lastRating === rating ? color : Colors.border,
-                },
-              ]}
-              onPress={() => handleRate(rating)}
-              activeOpacity={0.75}
-            >
-              <Ionicons name={icon as any} size={14} color={progress?.lastRating === rating ? color : Colors.textMuted} />
-              <Text style={[styles.ratingBtnText, { color: progress?.lastRating === rating ? color : Colors.textSecondary }]}>
-                {label}
-              </Text>
-            </TouchableOpacity>
-          ))}
+          {ratingButtons.map(({ label, rating, color, icon }) => {
+            const isActive = rating === 'story' ? isMarked : progress?.lastRating === rating;
+            return (
+              <TouchableOpacity
+                key={rating}
+                style={[
+                  styles.ratingBtn,
+                  {
+                    backgroundColor: isActive ? color + "30" : Colors.surface,
+                    borderColor: isActive ? color : Colors.border,
+                  },
+                ]}
+                onPress={() => handleRate(rating)}
+                activeOpacity={0.75}
+              >
+                <Ionicons name={icon as any} size={14} color={isActive ? color : Colors.textMuted} />
+                <Text style={[styles.ratingBtnText, { color: isActive ? color : Colors.textSecondary }]}>
+                  {label}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
         </Animated.View>
       </Animated.View>
 
@@ -237,7 +246,18 @@ const styles = StyleSheet.create({
   folderDot: { width: 6, height: 6, borderRadius: 3 },
   folderBadgeText: { fontFamily: "DMSans_500Medium", fontSize: 11 },
   topicCounter: { fontFamily: "DMSans_400Regular", fontSize: 11 },
-  editButton: { width: 36, height: 36, alignItems: "center", justifyContent: "center" },
+  headerOpenButton: {
+    height: 32,
+    paddingHorizontal: 12,
+    borderRadius: 16,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: 'rgba(0,0,0,0.05)', // Subtle contrast
+  },
+  headerOpenText: {
+    fontFamily: "DMSans_600SemiBold",
+    fontSize: 13,
+  },
   scroll: { flex: 1 },
   scrollContent: { paddingHorizontal: 24, paddingTop: 28 },
   noteLabelText: { fontFamily: "DMSans_500Medium", fontSize: 12, textTransform: "uppercase", letterSpacing: 1, marginBottom: 12 },

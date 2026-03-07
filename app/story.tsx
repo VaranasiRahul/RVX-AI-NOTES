@@ -9,6 +9,7 @@ import {
     StatusBar,
     Platform,
     ScrollView,
+    Pressable,
 } from "react-native";
 import { useLocalSearchParams, router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
@@ -24,8 +25,8 @@ const { width: SCREEN_WIDTH } = Dimensions.get("window");
 const STORY_DURATION = 15000;
 
 export default function StoryScreen() {
-    const { folderId, topicKey } = useLocalSearchParams<{ folderId?: string, topicKey?: string }>();
-    const { notes, markedTopics, folders, toggleTopicMark } = useNotes();
+    const { folderId, topicKey, type } = useLocalSearchParams<{ folderId?: string, topicKey?: string, type?: string }>();
+    const { notes, markedTopics, folders, toggleTopicMark, topicProgress } = useNotes();
 
     // Gather all marked topics
     const [topics, setTopics] = useState<any[]>([]);
@@ -40,14 +41,23 @@ export default function StoryScreen() {
             const all: any[] = [];
 
             for (const n of notes) {
+                // If filtering by folder, skip notes from other folders
                 if (folderId && n.folderId !== folderId) continue;
 
                 let t = await getCachedTopics(n.id, n.content);
                 if (!t) t = parseTopics(n);
                 t.forEach((topic: any, i: number) => {
                     const k = getTopicKey(n.id, i);
-                    // Only include bookmarked topics
-                    if (markedTopics[k]) {
+
+                    const isHard = topicProgress[k]?.lastRating === 'hard';
+                    const isMarked = markedTopics[k];
+
+                    // Logic:
+                    // 1. If type === 'hard', include all hard topics
+                    // 2. Otherwise, include only bookmarked topics
+                    const shouldInclude = type === 'hard' ? isHard : isMarked;
+
+                    if (shouldInclude) {
                         all.push({
                             ...topic,
                             noteId: n.id,
@@ -112,12 +122,72 @@ export default function StoryScreen() {
         }
     };
 
-    const handlePress = (evt: any) => {
-        const x = evt.nativeEvent.locationX;
-        if (x < SCREEN_WIDTH / 3) {
-            handlePrev();
-        } else {
-            handleNext();
+    const touchStartPos = useRef({ x: 0, y: 0 });
+    const isScrollGesture = useRef(false);
+    const longPressTimer = useRef<any>(null);
+
+    const handleTouchStart = (evt: any) => {
+        const { pageX, pageY } = evt.nativeEvent;
+        touchStartPos.current = { x: pageX, y: pageY };
+        isScrollGesture.current = false;
+
+        // Long press detection for pause
+        longPressTimer.current = setTimeout(() => {
+            if (!isScrollGesture.current) {
+                isPaused.current = true;
+                progressAnim.stopAnimation();
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+            }
+        }, 500);
+    };
+
+    const handleTouchMove = (evt: any) => {
+        const { pageX, pageY } = evt.nativeEvent;
+        const dx = Math.abs(pageX - touchStartPos.current.x);
+        const dy = Math.abs(pageY - touchStartPos.current.y);
+
+        // If moved more than 10px, it's a scroll gesture
+        if (dx > 10 || dy > 10) {
+            isScrollGesture.current = true;
+            if (longPressTimer.current) {
+                clearTimeout(longPressTimer.current);
+                longPressTimer.current = null;
+            }
+        }
+    };
+
+    const handleTouchEnd = (evt: any) => {
+        if (longPressTimer.current) {
+            clearTimeout(longPressTimer.current);
+            longPressTimer.current = null;
+        }
+
+        const { pageX, pageY } = evt.nativeEvent;
+        const dx = Math.abs(pageX - touchStartPos.current.x);
+        const dy = Math.abs(pageY - touchStartPos.current.y);
+
+        if (isPaused.current) {
+            // Resume if paused
+            isPaused.current = false;
+            const remaining = STORY_DURATION * (1 - (progressAnim as any)._value);
+            RNAnimated.timing(progressAnim, {
+                toValue: 1,
+                duration: Math.max(0, remaining),
+                useNativeDriver: false,
+            }).start(({ finished }) => {
+                if (finished) handleNext();
+            });
+            return;
+        }
+
+        // If it was a quick tap (not a significant scroll or long press)
+        if (!isScrollGesture.current && dx < 20 && dy < 20) {
+            const x = evt.nativeEvent.pageX; // Use pageX for absolute screen position
+            if (x < SCREEN_WIDTH / 3) {
+                handlePrev();
+            } else {
+                handleNext();
+            }
         }
     };
 
@@ -150,31 +220,13 @@ export default function StoryScreen() {
         <View style={styles.container}>
             <StatusBar barStyle="light-content" backgroundColor="#0F172A" />
 
-            {/* Tap Areas */}
-            <TouchableOpacity
-                activeOpacity={1}
-                onPress={handlePress}
-                onLongPress={() => {
-                    isPaused.current = true;
-                    progressAnim.stopAnimation();
-                }}
-                onPressOut={() => {
-                    if (isPaused.current) {
-                        isPaused.current = false;
-                        // Resume from current value
-                        const remaining = STORY_DURATION * (1 - (progressAnim as any)._value);
-                        RNAnimated.timing(progressAnim, {
-                            toValue: 1,
-                            duration: remaining,
-                            useNativeDriver: false,
-                        }).start(({ finished }) => {
-                            if (finished) handleNext();
-                        });
-                    }
-                }}
+            {/* Content Wrapper */}
+            <View
                 style={styles.tapArea}
+                onTouchStart={handleTouchStart}
+                onTouchMove={handleTouchMove}
+                onTouchEnd={handleTouchEnd}
             >
-                {/* Content Wrapper */}
                 <Animated.View
                     key={`story-slide-${currentIndex}`}
                     entering={FadeIn.duration(200)}
@@ -224,12 +276,21 @@ export default function StoryScreen() {
 
                     {/* Actual Topic Content inside the Story */}
                     <View style={styles.topicContent}>
-                        <Text style={[styles.noteTitleTag, { color: folder.color }]}>{currentTopic.noteTitle}</Text>
-                        <Text style={styles.topicTitle}>{currentTopic.title}</Text>
                         <ScrollView
+                            style={{ flex: 1 }}
+                            scrollEventThrottle={16}
+                            onScroll={() => {
+                                isScrollGesture.current = true;
+                                if (longPressTimer.current) {
+                                    clearTimeout(longPressTimer.current);
+                                    longPressTimer.current = null;
+                                }
+                            }}
                             showsVerticalScrollIndicator={false}
-                            contentContainerStyle={{ paddingBottom: 100 }}
+                            contentContainerStyle={{ paddingBottom: 120 }}
                         >
+                            <Text style={[styles.noteTitleTag, { color: folder.color }]}>{currentTopic.noteTitle}</Text>
+                            <Text style={styles.topicTitle}>{currentTopic.title}</Text>
                             <Text style={styles.topicBody}>
                                 {stripMarkdown(currentTopic.body)}
                             </Text>
@@ -237,7 +298,7 @@ export default function StoryScreen() {
                     </View>
 
                 </Animated.View>
-            </TouchableOpacity>
+            </View>
 
             {/* Bottom Action Bar */}
             <View style={styles.bottomBar}>

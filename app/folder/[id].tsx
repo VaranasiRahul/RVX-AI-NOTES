@@ -14,7 +14,11 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { router, useLocalSearchParams } from "expo-router";
-import Animated, { FadeIn, FadeInDown, Layout } from "react-native-reanimated";
+import Animated, {
+  FadeIn,
+  FadeInDown,
+  LinearTransition
+} from "react-native-reanimated";
 import * as Haptics from "expo-haptics";
 import { Ionicons } from "@expo/vector-icons";
 import { useNotes, Note, parseTopics } from "@/context/NotesContext";
@@ -44,7 +48,11 @@ function RenameNoteModal({ visible, currentName, onClose, onRename, Colors }: {
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
       <Pressable style={styles.modalOverlay} onPress={onClose}>
-        <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={styles.modalKAV}>
+        <KeyboardAvoidingView
+          behavior={Platform.OS === "ios" ? "padding" : "height"}
+          style={styles.modalKAV}
+          keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 40}
+        >
           <Pressable>
             <View style={[styles.modalSheet, { backgroundColor: Colors.surface, paddingBottom: insets.bottom + 20 }]}>
               <View style={[styles.modalHandle, { backgroundColor: Colors.border }]} />
@@ -84,47 +92,55 @@ function RenameNoteModal({ visible, currentName, onClose, onRename, Colors }: {
 }
 
 // ─── Note Item ─────────────────────────────────────────────────────────────────
-function NoteItem({ note, onPress, onLongPress, Colors }: {
+function NoteItem({ note, onPress, onLongPress, Colors, theme }: {
   note: Note;
   onPress: () => void;
   onLongPress: () => void;
   Colors: any;
+  theme: string;
 }) {
-  const topics = parseTopics(note);
   const preview = note.content.split("\n")[0]?.trim() || "Empty note";
 
   return (
-    <Animated.View entering={FadeInDown.springify()} layout={Layout.springify()} style={styles.rowWrapper}>
+    <Animated.View
+      entering={FadeInDown.duration(500).springify()}
+      layout={LinearTransition}
+    >
       <TouchableOpacity
-        style={[styles.noteItem, { backgroundColor: Colors.card, borderColor: Colors.border, flex: 1 }]}
+        style={[
+          styles.noteCard,
+          {
+            backgroundColor: Colors.card,
+            borderColor: Colors.border,
+            borderWidth: 1
+          }
+        ]}
         onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); onPress(); }}
         onLongPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy); onLongPress(); }}
-        activeOpacity={0.75}
+        activeOpacity={0.85}
         delayLongPress={400}
       >
-        <View style={styles.noteItemContent}>
-          <Text style={[styles.noteTitle, { color: Colors.text }]}>{note.title}</Text>
-          <Text style={[styles.notePreview, { color: Colors.textMuted }]} numberOfLines={2}>{preview}</Text>
-          <View style={styles.noteFooter}>
-            <View style={styles.noteBadge}>
-              <Ionicons name="list" size={11} color={Colors.textMuted} />
-              <Text style={[styles.noteBadgeText, { color: Colors.textMuted }]}>
-                {topics.length} {topics.length === 1 ? "topic" : "topics"}
-              </Text>
-            </View>
-            <Text style={[styles.noteDate, { color: Colors.textMuted }]}>
+        <View style={styles.noteMainContent}>
+          <Text
+            style={[
+              styles.noteLabel,
+              { color: Colors.text }
+            ]}
+            numberOfLines={1}
+          >
+            {note.title}
+          </Text>
+          <Text style={[styles.notePreview, { color: Colors.textSecondary }]} numberOfLines={1}>{preview}</Text>
+
+          <View style={styles.noteMetadataRow}>
+            <Text style={[styles.dateText, { color: Colors.textMuted }]}>
               {new Date(note.updatedAt).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
             </Text>
           </View>
         </View>
-        <Ionicons name="chevron-forward" size={16} color={Colors.textMuted} />
-      </TouchableOpacity>
-      <TouchableOpacity
-        style={[styles.moreBtn, { backgroundColor: Colors.surface, borderColor: Colors.border }]}
-        onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); onLongPress(); }}
-        activeOpacity={0.7}
-      >
-        <Ionicons name="ellipsis-vertical" size={18} color={Colors.textMuted} />
+        <View style={styles.chevronBox}>
+          <Ionicons name="chevron-forward" size={14} color={Colors.textMuted} opacity={0.4} />
+        </View>
       </TouchableOpacity>
     </Animated.View>
   );
@@ -151,7 +167,11 @@ function CreateNoteModal({ visible, onClose, onCreate, Colors }: {
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
       <Pressable style={styles.modalOverlay} onPress={onClose}>
-        <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={styles.modalKAV}>
+        <KeyboardAvoidingView
+          behavior={Platform.OS === "ios" ? "padding" : "height"}
+          style={styles.modalKAV}
+          keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 40}
+        >
           <Pressable>
             <View style={[styles.modalSheet, { backgroundColor: Colors.surface, paddingBottom: insets.bottom + 20 }]}>
               <View style={[styles.modalHandle, { backgroundColor: Colors.border }]} />
@@ -186,7 +206,7 @@ export default function FolderDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const insets = useSafeAreaInsets();
   const { folders, getNotesByFolder, createNote, updateNote, deleteNote } = useNotes();
-  const { colors: Colors } = useTheme();
+  const { colors: Colors, theme } = useTheme();
 
   const [createModalVisible, setCreateModalVisible] = useState(false);
   const [renameTarget, setRenameTarget] = useState<Note | null>(null);
@@ -199,9 +219,9 @@ export default function FolderDetailScreen() {
 
   if (!folder) {
     return (
-      <View style={[styles.container, { paddingTop: topPad, backgroundColor: Colors.background }]}>
+      <Animated.View style={[styles.header, { paddingTop: topPad + 16, backgroundColor: Colors.background }]}>
         <Text style={[styles.errorText, { color: Colors.error }]}>Folder not found</Text>
-      </View>
+      </Animated.View>
     );
   }
 
@@ -236,7 +256,8 @@ export default function FolderDetailScreen() {
         </TouchableOpacity>
       </Animated.View>
 
-      <FlatList
+      <Animated.FlatList
+        itemLayoutAnimation={LinearTransition}
         data={notes}
         keyExtractor={(item) => item.id}
         contentContainerStyle={[styles.list, { paddingBottom: 100 }]}
@@ -244,9 +265,10 @@ export default function FolderDetailScreen() {
         renderItem={({ item }) => (
           <NoteItem
             note={item}
-            onPress={() => router.push({ pathname: "/note/[id]", params: { id: item.id } })}
+            onPress={() => router.push(`/note/${item.id}`)}
             onLongPress={() => handleManage(item)}
             Colors={Colors}
+            theme={theme}
           />
         )}
         ListEmptyComponent={
@@ -336,19 +358,60 @@ const styles = StyleSheet.create({
   backButton: { width: 36, height: 36, alignItems: "center", justifyContent: "center" },
   headerCenter: { flex: 1, flexDirection: "row", alignItems: "center", gap: 8 },
   folderDot: { width: 10, height: 10, borderRadius: 5 },
-  headerTitle: { fontFamily: "PlayfairDisplay_700Bold", fontSize: 22 },
+  headerTitle: {
+    flex: 1,
+    fontFamily: "DMSans_500Medium",
+    fontSize: 18,
+    letterSpacing: 4,
+    textTransform: 'uppercase'
+  },
   addButton: { width: 36, height: 36, borderRadius: 18, alignItems: "center", justifyContent: "center" },
-  list: { paddingHorizontal: 20, gap: 10 },
-  noteItem: { flexDirection: "row", alignItems: "center", borderRadius: 16, padding: 16, borderWidth: 1, gap: 12 },
-  noteItemContent: { flex: 1, gap: 5 },
-  noteTitle: { fontFamily: "DMSans_600SemiBold", fontSize: 16 },
-  notePreview: { fontFamily: "DMSans_400Regular", fontSize: 13, lineHeight: 18 },
-  noteFooter: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginTop: 4 },
-  noteBadge: { flexDirection: "row", alignItems: "center", gap: 4 },
-  noteBadgeText: { fontFamily: "DMSans_400Regular", fontSize: 11 },
-  noteDate: { fontFamily: "DMSans_400Regular", fontSize: 11 },
-  rowWrapper: { flexDirection: "row", alignItems: "stretch", gap: 8 },
-  moreBtn: { width: 40, borderRadius: 14, alignItems: "center", justifyContent: "center", borderWidth: 1 },
+  list: { paddingHorizontal: 16, gap: 12 },
+  noteCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    borderRadius: 22,
+    padding: 16,
+    borderWidth: 1,
+    gap: 12,
+  },
+  noteMainContent: { flex: 1, gap: 4 },
+  noteLabel: {
+    fontFamily: "DMSans_600SemiBold",
+    fontSize: 17,
+    letterSpacing: -0.2,
+  },
+  notePreview: {
+    fontFamily: "DMSans_400Regular",
+    fontSize: 13,
+    opacity: 0.7,
+  },
+  noteMetadataRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginTop: 8,
+  },
+  miniBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.05)',
+  },
+  miniBadgeText: { fontFamily: "DMSans_500Medium", fontSize: 10 },
+  dateText: { fontFamily: "DMSans_400Regular", fontSize: 10, opacity: 0.5 },
+  chevronBox: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: 'rgba(255,255,255,0.03)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   emptyState: { alignItems: "center", paddingTop: 60, gap: 10 },
   emptyTitle: { fontFamily: "PlayfairDisplay_600SemiBold", fontSize: 22, marginTop: 8 },
   emptySubtitle: { fontFamily: "DMSans_400Regular", fontSize: 14, textAlign: "center", lineHeight: 21, paddingHorizontal: 32 },

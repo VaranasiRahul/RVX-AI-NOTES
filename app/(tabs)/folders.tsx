@@ -14,7 +14,11 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { router } from "expo-router";
-import Animated, { FadeIn, FadeInDown, Layout } from "react-native-reanimated";
+import Animated, {
+  FadeIn,
+  FadeInDown,
+  LinearTransition
+} from "react-native-reanimated";
 import * as Haptics from "expo-haptics";
 import { Ionicons } from "@expo/vector-icons";
 import { useNotes, Folder, ALL_FOLDER_COLORS } from "@/context/NotesContext";
@@ -42,7 +46,11 @@ function RenameModal({ visible, currentName, onClose, onRename, Colors }: {
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
       <Pressable style={styles.modalOverlay} onPress={onClose}>
-        <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={styles.modalKAV}>
+        <KeyboardAvoidingView
+          behavior={Platform.OS === "ios" ? "padding" : "height"}
+          style={styles.modalKAV}
+          keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 40}
+        >
           <Pressable>
             <View style={[styles.modalSheet, { backgroundColor: Colors.surface, paddingBottom: insets.bottom + 20 }]}>
               <View style={[styles.modalHandle, { backgroundColor: Colors.border }]} />
@@ -81,41 +89,67 @@ function RenameModal({ visible, currentName, onClose, onRename, Colors }: {
   );
 }
 
-function FolderItem({ folder, noteCount, onPress, onLongPress, Colors }: {
+function FolderItem({ folder, noteCount, onPress, onLongPress, Colors, theme }: {
   folder: Folder;
   noteCount: number;
   onPress: () => void;
   onLongPress: () => void;
   Colors: any;
+  theme: string;
 }) {
   return (
-    <Animated.View entering={FadeInDown.springify()} layout={Layout.springify()} style={styles.rowWrapper}>
+    <Animated.View
+      entering={FadeInDown.duration(600).springify()}
+      layout={LinearTransition}
+    >
       <TouchableOpacity
-        style={[styles.folderItem, { backgroundColor: Colors.card, borderColor: Colors.border, flex: 1 }]}
+        style={[
+          styles.folderCard,
+          {
+            backgroundColor: Colors.card,
+            borderColor: theme === 'midnightGlass' ? 'transparent' : Colors.border,
+            borderWidth: theme === 'midnightGlass' ? 0 : 1
+          }
+        ]}
         onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); onPress(); }}
         onLongPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy); onLongPress(); }}
-        activeOpacity={0.7}
+        activeOpacity={0.9}
         delayLongPress={400}
       >
-        <View style={[styles.folderIcon, { backgroundColor: folder.color + "22" }]}>
-          <Ionicons name="folder" size={22} color={folder.color} />
+        {/* Modern Icon Container with Glow */}
+        <View style={[styles.iconBox, { backgroundColor: folder.color + "15" }]}>
+          <View style={[styles.iconInner, { backgroundColor: folder.color + "25" }]}>
+            <Ionicons name="folder-sharp" size={26} color={folder.color} />
+          </View>
+          {/* Subtle Glow */}
+          <View style={[styles.iconGlow, { backgroundColor: folder.color, opacity: 0.12 }]} />
         </View>
-        <View style={styles.folderInfo}>
-          <Text style={[styles.folderName, { color: Colors.text }]}>{folder.name}</Text>
-          <Text style={[styles.folderCount, { color: Colors.textMuted }]}>
-            {noteCount} {noteCount === 1 ? "note" : "notes"}
+
+        <View style={styles.contentBox}>
+          <Text
+            style={[
+              styles.folderLabel,
+              { color: Colors.text }
+            ]}
+            numberOfLines={1}
+          >
+            {folder.name}
           </Text>
+          <View style={styles.metaRow}>
+            <View style={[styles.countBadge, { backgroundColor: Colors.card }]}>
+              <Text style={[styles.countText, { color: folder.color }]}>{noteCount}</Text>
+            </View>
+            <Text style={[styles.metaText, { color: Colors.textMuted }]}>
+              {noteCount === 1 ? "Note" : "Notes"}
+            </Text>
+          </View>
         </View>
-        <Ionicons name="chevron-forward" size={18} color={Colors.textMuted} />
+
+        <View style={styles.arrowBox}>
+          <Ionicons name="chevron-forward" size={16} color={Colors.textMuted} opacity={0.5} />
+        </View>
       </TouchableOpacity>
-      <TouchableOpacity
-        style={[styles.moreBtn, { backgroundColor: Colors.surface, borderColor: Colors.border }]}
-        onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); onLongPress(); }}
-        activeOpacity={0.7}
-      >
-        <Ionicons name="ellipsis-vertical" size={18} color={Colors.textMuted} />
-      </TouchableOpacity>
-    </Animated.View>
+    </Animated.View >
   );
 }
 
@@ -180,8 +214,10 @@ function CreateFolderModal({ visible, onClose, onCreate, Colors }: {
                 ))}
               </View>
               <View style={[styles.previewRow, { backgroundColor: Colors.card, borderColor: Colors.border }]}>
-                <View style={[styles.folderIcon, { backgroundColor: selectedColor + "22" }]}>
-                  <Ionicons name="folder" size={22} color={selectedColor} />
+                <View style={[styles.iconBox, { backgroundColor: selectedColor + "15", width: 48, height: 48, borderRadius: 14 }]}>
+                  <View style={[styles.iconInner, { backgroundColor: selectedColor + "25", width: 38, height: 38, borderRadius: 12 }]}>
+                    <Ionicons name="folder-sharp" size={20} color={selectedColor} />
+                  </View>
                 </View>
                 <Text style={[styles.previewName, { color: Colors.text }]}>{name || "Folder name"}</Text>
               </View>
@@ -260,7 +296,7 @@ function ConfirmDelete({ visible, title, message, onConfirm, onClose, Colors }: 
 export default function FoldersScreen() {
   const insets = useSafeAreaInsets();
   const { folders, notes, createFolder, updateFolder, deleteFolder } = useNotes();
-  const { colors: Colors } = useTheme();
+  const { colors: Colors, theme } = useTheme();
 
   const [createModalVisible, setCreateModalVisible] = useState(false);
   const [renameTarget, setRenameTarget] = useState<Folder | null>(null);
@@ -280,7 +316,7 @@ export default function FoldersScreen() {
       {/* Plain header — no BlurView */}
       <Animated.View
         entering={FadeIn.duration(400)}
-        style={[styles.header, { paddingTop: topPad + 16, paddingBottom: 16 }]}
+        style={[styles.header, { paddingTop: topPad + 28, paddingBottom: 16 }]}
       >
         <Text style={[styles.headerTitle, { color: Colors.text }]}>Folders</Text>
         <TouchableOpacity
@@ -291,7 +327,8 @@ export default function FoldersScreen() {
         </TouchableOpacity>
       </Animated.View>
 
-      <FlatList
+      <Animated.FlatList
+        itemLayoutAnimation={LinearTransition}
         data={folders}
         keyExtractor={(item) => item.id}
         contentContainerStyle={[styles.list, { paddingBottom: 100 }]}
@@ -300,9 +337,10 @@ export default function FoldersScreen() {
           <FolderItem
             folder={item}
             noteCount={getNoteCount(item.id)}
-            onPress={() => router.push({ pathname: "/folder/[id]", params: { id: item.id } })}
+            onPress={() => router.push(`/folder/${item.id}`)}
             onLongPress={() => handleManage(item)}
             Colors={Colors}
+            theme={theme}
           />
         )}
         ListEmptyComponent={
@@ -348,16 +386,97 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     paddingHorizontal: 20,
   },
-  headerTitle: { fontFamily: "PlayfairDisplay_700Bold", fontSize: 28 },
-  addButton: { width: 40, height: 40, borderRadius: 20, alignItems: "center", justifyContent: "center" },
-  list: { paddingHorizontal: 20, gap: 10 },
-  folderItem: { flexDirection: "row", alignItems: "center", borderRadius: 16, padding: 16, borderWidth: 1, gap: 14 },
-  folderIcon: { width: 46, height: 46, borderRadius: 12, alignItems: "center", justifyContent: "center" },
-  folderInfo: { flex: 1 },
-  folderName: { fontFamily: "DMSans_600SemiBold", fontSize: 16, marginBottom: 3 },
-  folderCount: { fontFamily: "DMSans_400Regular", fontSize: 12 },
-  rowWrapper: { flexDirection: "row", alignItems: "stretch", gap: 8 },
-  moreBtn: { width: 44, borderRadius: 16, alignItems: "center", justifyContent: "center", borderWidth: 1 },
+  headerTitle: {
+    flex: 1,
+    fontFamily: "DMSans_500Medium",
+    fontSize: 22,
+    letterSpacing: 4,
+    textTransform: 'uppercase',
+  },
+  addButton: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    alignItems: "center",
+    justifyContent: "center",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 6,
+  },
+  list: { paddingHorizontal: 16, gap: 16 },
+  folderCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    borderRadius: 20,
+    padding: 12,
+    borderWidth: 1,
+    gap: 16,
+    overflow: 'hidden',
+    // Glassmorphism effect
+    backgroundColor: 'rgba(255, 255, 255, 0.03)',
+  },
+  iconBox: {
+    width: 44,
+    height: 44,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    position: 'relative',
+  },
+  iconInner: {
+    width: 32,
+    height: 32,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 2,
+  },
+  iconGlow: {
+    position: 'absolute',
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    filter: 'blur(20px)',
+    zIndex: 1,
+  },
+  contentBox: { flex: 1, justifyContent: 'center' },
+  folderLabel: {
+    fontFamily: "DMSans_600SemiBold",
+    fontSize: 16,
+    marginBottom: 2,
+    letterSpacing: -0.3,
+  },
+  metaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  countBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.05)',
+  },
+  countText: {
+    fontFamily: "DMSans_700Bold",
+    fontSize: 12,
+  },
+  metaText: {
+    fontFamily: "DMSans_500Medium",
+    fontSize: 12,
+    opacity: 0.6,
+  },
+  arrowBox: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: 'rgba(255,255,255,0.03)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   emptyState: { alignItems: "center", paddingTop: 60, gap: 10 },
   emptyTitle: { fontFamily: "PlayfairDisplay_600SemiBold", fontSize: 22, marginTop: 8 },
   emptySubtitle: { fontFamily: "DMSans_400Regular", fontSize: 14, textAlign: "center", lineHeight: 21, paddingHorizontal: 32 },

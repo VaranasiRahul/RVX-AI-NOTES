@@ -19,10 +19,10 @@ CRITICAL RULES:
 4. AGGRESSIVELY DELETE CONVERSATIONAL FILLER. If the text begins with or contains AI chatter (e.g., "Below are deep, structured...", "Here are your notes", "Sure, I can help", or random raw links), COMPLETELY OMIT that text from your entire output. Do NOT include it as a topic. Just skip straight to the actual study material.
 5. IGNORE all visual formatting (lines, spaces, dashes) or existing structural headers. Make splitting decisions based solely on when the underlying subject matter naturally and firmly shifts to a new major section.
 6. PRESERVE ALL ACTUAL STUDY CONTENT. Every single piece of relevant information, command, detail, code snippet, and bullet point from the original text MUST be included. 
-7. Give each topic a highly descriptive, meaningful heading/title based on the content inside that block. This heading MUST act as an accurate summary of what the block is teaching.
-   - The heading CAN be long (up to a full sentence) if necessary.
+2. Give each topic a highly descriptive, comprehensive title based on the content inside that block. This heading MUST act as an accurate summary of what the block is teaching.
+   - DO NOT USE SHORT 1-2 WORD TITLES. The title SHOULD be a full, descriptive phrase or sentence (e.g., instead of "Advantages", use "The Key Advantages and Use Cases of Terraform State Files").
+   - The title must fully capture the breadth of the specific block's content.
    - The heading MUST NOT be a raw URL link.
-   - The heading MUST NOT be a single word without context (e.g., instead of "Advantages", use "Advantages of Terraform State Files").
 8. GENERATE A DETAILED SUMMARY. For each block, write a comprehensive, in-depth paragraph (at least 5-8 full sentences) that deeply explains the core concepts, flow, and most important takeaways of that specific topic block. The summary should be highly detailed, long enough to fill a large reading card, and act as a standalone explanation of the material.
 
 Respond ONLY with a valid JSON array of objects, containing no markdown fences and no extra explanation:
@@ -91,7 +91,7 @@ export async function analyzeWithGemini(
     }
 
     return topics.map((t) => ({
-        title: String(t.title ?? 'Topic').slice(0, 80),
+        title: String(t.title ?? 'Topic').slice(0, 200),
         body: String(t.body ?? '').trim(),
         summary: String(t.summary ?? 'No summary available.').trim(),
     }));

@@ -9,7 +9,6 @@
     "userInterfaceStyle": "dark",
     "newArchEnabled": true,
     "splash": {
-      "image": "./assets/images/splash-icon.png",
       "resizeMode": "contain",
       "backgroundColor": "#0F0E0D"
     },
@@ -19,6 +18,7 @@
     },
     "android": {
       "package": "com.reviseit",
+      "softwareKeyboardLayoutMode": "resize",
       "adaptiveIcon": {
         "backgroundColor": "#0F0E0D",
         "foregroundImage": "./assets/images/android-icon-foreground.png",

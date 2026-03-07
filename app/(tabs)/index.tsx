@@ -15,10 +15,11 @@ import {
 } from "react-native";
 import Svg, { Circle, G } from "react-native-svg";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useScrollToTop } from "@react-navigation/native";
 
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
 import { router } from "expo-router";
-import Animated, { FadeInDown } from "react-native-reanimated";
+import Animated, { FadeInDown, LinearTransition } from "react-native-reanimated";
 import * as Haptics from "expo-haptics";
 import { Ionicons } from "@expo/vector-icons";
 import { BlurView } from "expo-blur";
@@ -27,6 +28,7 @@ import { onCacheUpdated } from "@/lib/topicCache";
 import { useTheme } from "@/context/ThemeContext";
 import FeedCard, { CARD_HEIGHT } from "@/components/FeedCard";
 import StoriesBar, { StoryItem } from "@/components/StoriesBar";
+import LivingAiIcon from "@/components/LivingAiIcon";
 
 const PAGE_SIZE = 8;
 
@@ -42,6 +44,8 @@ interface FeedItem {
   folderColor: string;
   topicIndex: number;
   isDue?: boolean;
+  lastRating?: string | null;
+  isDailyPick?: boolean;
 }
 
 function stripMarkdown(text: string): string {
@@ -78,7 +82,7 @@ async function buildAllTopicsAsync(
     topics.forEach((topic, i) => {
       const key = getTopicKey(note.id, i);
       const progress = topicProgress[key];
-      const isDue = !progress || progress.dueDate <= today;
+      const isDue = !progress || progress.lastRating === 'hard' || progress.dueDate <= today;
       items.push({
         id: `${note.id}-${i}`,
         title: topic.title,
@@ -91,6 +95,7 @@ async function buildAllTopicsAsync(
         folderColor: folder.color,
         topicIndex: i,
         isDue,
+        lastRating: progress?.lastRating || null,
       });
     });
   }
@@ -107,9 +112,30 @@ function shuffle<T>(arr: T[]): T[] {
 }
 
 function buildPrioritizedTopics(items: FeedItem[]): FeedItem[] {
-  const due = shuffle(items.filter((t) => t.isDue));
-  const notDue = shuffle(items.filter((t) => !t.isDue));
-  return [...due, ...notDue];
+  const hard = shuffle(items.filter((t) => t.lastRating === 'hard'));
+  const due = shuffle(items.filter((t) => t.isDue && t.lastRating !== 'hard'));
+  const notDue = shuffle(items.filter((t) => !t.isDue && t.lastRating !== 'hard'));
+  const others = [...due, ...notDue];
+
+  const result: FeedItem[] = [];
+  let hIdx = 0;
+  let oIdx = 0;
+
+  // Interleave: 1 Hard for every 2 Others
+  while (hIdx < hard.length || oIdx < others.length) {
+    for (let i = 0; i < 2 && oIdx < others.length; i++) {
+      result.push(others[oIdx++]);
+    }
+    if (hIdx < hard.length) {
+      result.push(hard[hIdx++]);
+    }
+    // Safety: if others finished, dump remaining hards
+    if (oIdx >= others.length && hIdx < hard.length) {
+      result.push(...hard.slice(hIdx));
+      break;
+    }
+  }
+  return result;
 }
 
 function FooterLoader({ loading, Colors }: { loading: boolean; Colors: any }) {
@@ -123,9 +149,9 @@ function FooterLoader({ loading, Colors }: { loading: boolean; Colors: any }) {
 
 export default function TodayScreen() {
   const insets = useSafeAreaInsets();
-  const { streak, isLoading, notes, folders, topicProgress, getDailyTopicData, markedTopics } = useNotes();
+  const { streak, isLoading, notes, folders, topicProgress, getDailyTopicData, markedTopics, toggleTopicMark } = useNotes();
   const isAiSyncing = useAiSyncStatus();
-  const { colors: Colors } = useTheme();
+  const { colors: Colors, theme } = useTheme();
 
   const [allTopics, setAllTopics] = useState<FeedItem[]>([]);
   const [selectedFolderId, setSelectedFolderId] = useState<string | null>(null);
@@ -162,6 +188,20 @@ export default function TodayScreen() {
   const dueCount = useMemo(() => allTopics.filter((t) => t.isDue).length, [allTopics]);
 
   const storiesData = useMemo(() => {
+    const stories: StoryItem[] = [];
+
+    // Add HARD TOPICS story if any exist
+    const hasHards = Object.values(topicProgress).some(p => p.lastRating === 'hard');
+    if (hasHards) {
+      stories.push({
+        id: 'story-hard-topics',
+        title: 'HARD TOPICS',
+        type: 'hard',
+        color: streak.currentStreak > 0 ? '#F43F5E' : Colors.accent,
+        keyData: 'hard',
+      });
+    }
+
     const folderMap = new Map<string, StoryItem>();
     const markedKeys = Object.keys(markedTopics).filter(k => markedTopics[k]);
     markedKeys.forEach(topicKey => {
@@ -178,14 +218,22 @@ export default function TodayScreen() {
         });
       }
     });
-    return Array.from(folderMap.values());
-  }, [markedTopics, allTopics, Colors]);
+
+    return [...stories, ...Array.from(folderMap.values())];
+  }, [markedTopics, allTopics, Colors, topicProgress, streak.currentStreak]);
 
   const handleStoryPress = useCallback((story: StoryItem) => {
-    router.push(`/story?folderId=${story.keyData}`);
+    if (story.type === 'hard') {
+      router.push(`/story?type=hard`);
+    } else {
+      router.push(`/story?folderId=${story.keyData}`);
+    }
   }, []);
 
   const [feedItems, setFeedItems] = useState<(FeedItem & { feedKey: string })[]>([]);
+  const flatListRef = useRef<FlatList>(null);
+  useScrollToTop(flatListRef);
+
   const [loadingMore, setLoadingMore] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [isSummarizeMode, setIsSummarizeMode] = useState(false);
@@ -275,14 +323,35 @@ export default function TodayScreen() {
       items = allTopics.filter(item => item.folderId === selectedFolderId);
     } else {
       // All tab: use the shuffled prioritized feed pipeline
-      items = feedItems;
+      items = [...feedItems];
+    }
+
+    // Hoist Today's Pick to top if present
+    if (dailyTopic && selectedFolderId === null && !isSummarizeMode) {
+      const pickIdx = items.findIndex(t =>
+        String(t.noteId) === String(dailyTopic.noteId) &&
+        Number(t.topicIndex) === Number(dailyTopic.topicIndex)
+      );
+      if (pickIdx !== -1) {
+        const [pick] = items.splice(pickIdx, 1);
+        items.unshift({ ...pick, isDailyPick: true });
+      } else {
+        // Fallback: If not in current feed batch, we could find it in allTopics
+        const fullPick = allTopics.find(t =>
+          String(t.noteId) === String(dailyTopic.noteId) &&
+          Number(t.topicIndex) === Number(dailyTopic.topicIndex)
+        );
+        if (fullPick) {
+          items.unshift({ ...fullPick, isDailyPick: true });
+        }
+      }
     }
 
     return items.map((t, i) => ({
       ...t,
       feedKey: `disp-${i}-${t.id}`,
     }));
-  }, [feedItems, allTopics, isSummarizeMode, selectedFolderId]);
+  }, [feedItems, allTopics, isSummarizeMode, selectedFolderId, dailyTopic]);
 
 
   const topPad = Platform.OS === "web" ? 67 : insets.top;
@@ -521,26 +590,22 @@ export default function TodayScreen() {
             )}
             <TouchableOpacity
               onPress={toggleSummarize}
-              style={[
-                styles.searchToggle,
-                {
-                  backgroundColor: isSummarizeMode ? Colors.accent + "22" : "transparent",
-                  borderColor: isSummarizeMode ? Colors.accent + "44" : Colors.border + "80",
-                },
-              ]}
+              activeOpacity={0.8}
+              style={{
+                marginLeft: 8,
+                marginRight: 4,
+              }}
             >
-              <Ionicons
-                name="sparkles"
-                size={16}
-                color={isSummarizeMode ? Colors.accent : Colors.textMuted}
+              <LivingAiIcon
+                active={isSummarizeMode}
               />
             </TouchableOpacity>
           </View>
         </View>
-
       </BlurView>
 
-      <FlatList
+      <Animated.FlatList
+        ref={flatListRef as any}
         data={displayedItems}
         keyExtractor={(item) => item.feedKey}
         contentContainerStyle={[styles.listContent, { paddingBottom: 120 }]}
@@ -552,7 +617,10 @@ export default function TodayScreen() {
         // Only paginate on the All tab — folder view shows all items at once
         onEndReached={selectedFolderId === null && !isSummarizeMode ? loadMoreItems : undefined}
         onEndReachedThreshold={0.4}
-        scrollEnabled={true}
+        initialNumToRender={4}
+        maxToRenderPerBatch={4}
+        windowSize={5}
+        removeClippedSubviews={false}
         keyboardShouldPersistTaps="handled"
         refreshControl={
           <RefreshControl
@@ -570,7 +638,11 @@ export default function TodayScreen() {
             item={item}
             index={index}
             Colors={Colors}
+            theme={theme}
+            isMarked={!!markedTopics[getTopicKey(item.noteId, item.topicIndex)]}
+            onToggleMark={() => toggleTopicMark(item.noteId, item.topicIndex)}
             onPress={() => navigateToTopic(item)}
+            isGlass={isSummarizeMode}
           />
         )}
       />

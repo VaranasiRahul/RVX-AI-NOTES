@@ -28,11 +28,13 @@ import {
 const THEME_ICONS: Record<ThemeName, keyof typeof Ionicons.glyphMap> = {
     darkBlue: "planet",
     lightWarm: "sunny",
+    midnightGlass: "moon",
 };
 
 const THEME_COLORS: Record<ThemeName, string> = {
     darkBlue: "#7EB8F7",
     lightWarm: "#A67D45",
+    midnightGlass: "#6366F1",
 };
 
 function SectionHeader({ title, Colors }: { title: string; Colors: any }) {
@@ -93,7 +95,7 @@ export default function SettingsScreen() {
             const json = await exportData();
             await Share.share({
                 message: json,
-                title: "ReviseIt Backup",
+                title: "RVX | Notes Backup",
             });
         } catch (e) {
             Alert.alert("Export Failed", "Could not export data. Please try again.");
@@ -111,7 +113,7 @@ export default function SettingsScreen() {
                     onPress: async () => {
                         Alert.alert(
                             "Import via Clipboard",
-                            "Copy your ReviseIt JSON backup to clipboard, then press Import.",
+                            "Copy your RVX | Notes JSON backup to clipboard, then press Import.",
                             [
                                 { text: "Cancel", style: "cancel" },
                                 {
@@ -142,7 +144,7 @@ export default function SettingsScreen() {
                 await scheduleDailyReminder(8, 0);
                 setNotificationsEnabled(true);
             } else {
-                Alert.alert("Permission Denied", "Please enable notifications for ReviseIt in your device settings.");
+                Alert.alert("Permission Denied", "Please enable notifications for RVX | Notes in your device settings.");
             }
         } else {
             await cancelAllReminders();
@@ -157,9 +159,9 @@ export default function SettingsScreen() {
     const ratedTopics = Object.keys(topicProgress).length;
 
     return (
-        <View style={[styles.container, { paddingTop: topPad, backgroundColor: Colors.background }]}>
+        <View style={[styles.container, { paddingTop: topPad + 20, backgroundColor: Colors.background }]}>
             <ScrollView
-                contentContainerStyle={[styles.scrollContent, { paddingBottom: Platform.OS === "web" ? 100 : 100 }]}
+                contentContainerStyle={[styles.scrollContent, { paddingTop: 8, paddingBottom: 100 }]}
                 showsVerticalScrollIndicator={false}
             >
                 <Animated.View entering={FadeIn.duration(400)}>
@@ -218,17 +220,26 @@ export default function SettingsScreen() {
                 <Animated.View entering={FadeInDown.delay(120)}>
                     <SectionHeader title="AI Topic Analysis" Colors={Colors} />
                     <View style={[styles.group, { backgroundColor: Colors.card, borderColor: Colors.border, borderWidth: 1, borderRadius: 16, overflow: 'hidden' }]}>
-                        <View style={{ padding: 14, gap: 10 }}>
-                            <Text style={{ fontFamily: 'DMSans_400Regular', fontSize: 13, color: Colors.textMuted, lineHeight: 18 }}>
-                                Enter your free Gemini API key to enable intelligent topic separation. Get one at{' '}
-                                <Text style={{ color: Colors.accent, textDecorationLine: 'underline' }} onPress={() => Linking.openURL('https://aistudio.google.com/app/apikey')}>
-                                    aistudio.google.com
+                        <View style={{ padding: 14, gap: 12 }}>
+                            <View style={{ gap: 4 }}>
+                                <Text style={{ fontFamily: 'DMSans_600SemiBold', fontSize: 15, color: Colors.text }}>Set up AI Intelligence</Text>
+                                <Text style={{ fontFamily: 'DMSans_400Regular', fontSize: 13, color: Colors.textMuted, lineHeight: 18 }}>
+                                    Bring your notes to life with Google's Gemini. AI automatically detects topics, creates chapters, and generates summaries.
                                 </Text>
-                            </Text>
+                            </View>
+
+                            <View style={[styles.guideBox, { backgroundColor: Colors.surfaceElevated, borderColor: Colors.border }]}>
+                                <Text style={[styles.guideTitle, { color: Colors.accent }]}>How to get your API Key:</Text>
+                                <Text style={[styles.guideStep, { color: Colors.text }]}>1. Go to <Text style={{ color: Colors.accent, textDecorationLine: 'underline' }} onPress={() => Linking.openURL('https://aistudio.google.com/app/apikey')}>Google AI Studio</Text></Text>
+                                <Text style={[styles.guideStep, { color: Colors.text }]}>2. Sign in with your Google Account</Text>
+                                <Text style={[styles.guideStep, { color: Colors.text }]}>3. Click "Create API key in new project"</Text>
+                                <Text style={[styles.guideStep, { color: Colors.text }]}>4. Copy the key and paste it below</Text>
+                            </View>
+
                             <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
                                 <TextInput
-                                    style={[{ flex: 1, fontFamily: 'DMSans_400Regular', fontSize: 13, color: Colors.text, backgroundColor: Colors.surfaceElevated, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 8, borderWidth: 1, borderColor: Colors.border }]}
-                                    placeholder="AIza..."
+                                    style={[{ flex: 1, fontFamily: 'DMSans_400Regular', fontSize: 13, color: Colors.text, backgroundColor: Colors.surfaceElevated, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10, borderWidth: 1, borderColor: Colors.border }]}
+                                    placeholder="Paste your Gemini API key here..."
                                     placeholderTextColor={Colors.textMuted}
                                     value={geminiKeyInput}
                                     onChangeText={setGeminiKeyInput}
@@ -237,7 +248,7 @@ export default function SettingsScreen() {
                                     autoCorrect={false}
                                 />
                                 <TouchableOpacity
-                                    style={{ backgroundColor: Colors.accent, paddingHorizontal: 14, paddingVertical: 9, borderRadius: 10 }}
+                                    style={{ backgroundColor: Colors.accent, paddingHorizontal: 16, paddingVertical: 11, borderRadius: 10 }}
                                     onPress={async () => {
                                         await setGeminiApiKey(geminiKeyInput);
                                         setGeminiSaved(true);
@@ -250,14 +261,21 @@ export default function SettingsScreen() {
                                     </Text>
                                 </TouchableOpacity>
                             </View>
+
                             {geminiApiKey ? (
-                                <Text style={{ fontFamily: 'DMSans_400Regular', fontSize: 12, color: Colors.accent }}>
-                                    ✦ AI active — tap the sparkles button in any note to analyze topics
-                                </Text>
+                                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                                    <Ionicons name="sparkles" size={14} color={Colors.accent} />
+                                    <Text style={{ fontFamily: 'DMSans_500Medium', fontSize: 13, color: Colors.accent }}>
+                                        AI Advanced Features Active
+                                    </Text>
+                                </View>
                             ) : (
-                                <Text style={{ fontFamily: 'DMSans_400Regular', fontSize: 12, color: Colors.textMuted }}>
-                                    Without a key, notes use basic topic splitting instead of AI
-                                </Text>
+                                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                                    <Ionicons name="information-circle-outline" size={14} color={Colors.textMuted} />
+                                    <Text style={{ fontFamily: 'DMSans_400Regular', fontSize: 12, color: Colors.textMuted }}>
+                                        Without a key, notes use basic line separation
+                                    </Text>
+                                </View>
                             )}
                         </View>
                     </View>
@@ -305,16 +323,39 @@ export default function SettingsScreen() {
                     </View>
                 </Animated.View>
 
+                {/* Connect */}
+                <Animated.View entering={FadeInDown.delay(200)}>
+                    <SectionHeader title="Connect" Colors={Colors} />
+                    <View style={styles.group}>
+                        <SettingsRow
+                            icon="logo-linkedin"
+                            label="LinkedIn"
+                            subtitle="Connect with the Developer"
+                            onPress={() => Linking.openURL('https://www.linkedin.com/in/varanasirahul/')}
+                            Colors={Colors}
+                        />
+                    </View>
+                </Animated.View>
+
                 {/* About */}
                 <Animated.View entering={FadeInDown.delay(220)}>
                     <SectionHeader title="About" Colors={Colors} />
                     <View style={[styles.aboutCard, { backgroundColor: Colors.card, borderColor: Colors.border }]}>
-                        <Ionicons name="book" size={32} color={Colors.accent} />
-                        <Text style={[styles.aboutTitle, { color: Colors.text }]}>ReviseIt</Text>
+                        <Text style={[styles.aboutTitle, { color: Colors.text }]}>RVX NOTES</Text>
                         <Text style={[styles.aboutSubtitle, { color: Colors.textMuted }]}>
-                            Notes revision with spaced repetition
+                            AI NOTES APPLICATION
                         </Text>
-                        <Text style={[styles.aboutVersion, { color: Colors.textMuted }]}>Version 2.0</Text>
+                        <View style={{ height: 12 }} />
+
+                        <Text style={[styles.legalNotice, { color: Colors.textSecondary }]}>
+                            © 2024–2026. The concepts, designs, and application "RVX Notes" are the exclusive intellectual property of Rahul Varanasi. This work is legally registered and protected by copyright law. Unauthorized reproduction, distribution, or imitation is strictly prohibited.
+                        </Text>
+
+                        <View style={{ height: 12 }} />
+                        <Text style={[styles.aboutVersion, { color: Colors.textMuted }]}>Version 1.0</Text>
+                        <Text style={[styles.aboutDeveloper, { color: Colors.textMuted }]}>
+                            Owner & Developer: Rahul Varanasi
+                        </Text>
                     </View>
                 </Animated.View>
             </ScrollView>
@@ -325,8 +366,22 @@ export default function SettingsScreen() {
 const styles = StyleSheet.create({
     container: { flex: 1 },
     scrollContent: { paddingHorizontal: 20, paddingTop: 8, gap: 16 },
-    headerTitle: { fontFamily: "PlayfairDisplay_700Bold", fontSize: 28, marginBottom: 4 },
-    sectionHeader: { fontFamily: "DMSans_600SemiBold", fontSize: 11, letterSpacing: 1, marginBottom: 8, marginLeft: 4 },
+    headerTitle: {
+        fontFamily: "DMSans_500Medium",
+        fontSize: 22,
+        letterSpacing: 4,
+        textTransform: 'uppercase',
+        marginBottom: 8
+    },
+    sectionHeader: {
+        fontFamily: "DMSans_500Medium",
+        fontSize: 13,
+        letterSpacing: 3,
+        textTransform: 'uppercase',
+        color: '#6366F1', // Use accent for section headers
+        marginBottom: 12,
+        marginLeft: 4
+    },
     // Stats
     statsCard: { flexDirection: "row", borderRadius: 16, padding: 16, borderWidth: 1 },
     statsItem: { flex: 1, alignItems: "center", gap: 3 },
@@ -348,7 +403,20 @@ const styles = StyleSheet.create({
     rowSubtitle: { fontFamily: "DMSans_400Regular", fontSize: 12, marginTop: 1 },
     // About
     aboutCard: { borderRadius: 16, padding: 24, alignItems: "center", borderWidth: 1, gap: 6 },
-    aboutTitle: { fontFamily: "PlayfairDisplay_700Bold", fontSize: 22 },
+    aboutTitle: { fontFamily: "DMSans_500Medium", fontSize: 20, letterSpacing: 6 },
     aboutSubtitle: { fontFamily: "DMSans_400Regular", fontSize: 13, textAlign: "center" },
     aboutVersion: { fontFamily: "DMSans_400Regular", fontSize: 12, marginTop: 4 },
+    aboutDeveloper: { fontFamily: "DMSans_500Medium", fontSize: 12, marginTop: 2 },
+    legalNotice: {
+        fontFamily: "DMSans_400Regular",
+        fontSize: 11,
+        textAlign: "center",
+        lineHeight: 18,
+        paddingHorizontal: 12,
+        opacity: 0.8
+    },
+    // Guide Box
+    guideBox: { padding: 12, borderRadius: 12, borderWidth: 1, gap: 6 },
+    guideTitle: { fontFamily: "DMSans_700Bold", fontSize: 13, marginBottom: 2 },
+    guideStep: { fontFamily: "DMSans_400Regular", fontSize: 12, lineHeight: 18 },
 });

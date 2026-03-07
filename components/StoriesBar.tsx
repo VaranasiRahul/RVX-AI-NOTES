@@ -15,7 +15,7 @@ import Animated, { FadeInRight } from "react-native-reanimated";
 export interface StoryItem {
     id: string;
     title: string;
-    type: "folder" | "marked";
+    type: "folder" | "marked" | "hard";
     color: string;
     keyData: any; // e.g Folder ID or Topic Data
 }

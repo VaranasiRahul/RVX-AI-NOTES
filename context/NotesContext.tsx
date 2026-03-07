@@ -3,6 +3,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Crypto from 'expo-crypto';
 import type { TopicEntry } from '@/lib/topicCache';
 import { generateLocalSummary } from '@/lib/localSummarizer';
+import { WidgetManager } from '@/lib/widget';
 
 export interface Folder {
   id: string;
@@ -42,14 +43,14 @@ export interface StreakData {
   longestStreak: number;
   lastRevisedDate: string | null;
   history: string[];
-  dailyReviewCounts: Record<string, number>; // date -> count of topics reviewed
+  dailyReviewCounts: Record<string, number>;
 }
 
 // SM-2 spaced repetition data per topic
 export interface TopicProgress {
-  interval: number;      // days until next review
-  easeFactor: number;    // multiplier (default 2.5)
-  dueDate: string;       // ISO date string YYYY-MM-DD
+  interval: number;
+  easeFactor: number;
+  dueDate: string;
   reviewCount: number;
   lastRating: 'easy' | 'good' | 'hard' | 'again' | null;
 }
@@ -93,15 +94,14 @@ function applySM2(progress: TopicProgress, rating: SRRating): TopicProgress {
     interval = 1;
     easeFactor = Math.max(1.3, easeFactor - 0.2);
   } else if (rating === 'hard') {
-    interval = Math.max(1, Math.round(interval * 1.2));
+    interval = 1;
     easeFactor = Math.max(1.3, easeFactor - 0.15);
   } else if (rating === 'good') {
     if (reviewCount === 0) interval = 1;
     else if (reviewCount === 1) interval = 3;
     else interval = Math.round(interval * easeFactor);
   } else { // easy
-    if (reviewCount === 0) interval = 3;
-    else interval = Math.round(interval * easeFactor * 1.3);
+    interval = 30;
     easeFactor = Math.min(3.0, easeFactor + 0.15);
   }
 
@@ -113,7 +113,6 @@ function applySM2(progress: TopicProgress, rating: SRRating): TopicProgress {
     lastRating: rating,
   };
 }
-
 
 // ── AI Sync Status Emitter ───────────────────────────────────────────────────
 type SyncListener = (isSyncing: boolean) => void;
@@ -146,50 +145,44 @@ export async function runAiAnalysis(
   try {
     const { getCachedTopics, setCachedTopics } = await import('@/lib/topicCache');
 
-    // Return cached result if content hasn't changed
     const cached = await getCachedTopics(noteId, content);
     if (cached) return cached;
 
     let topics: TopicEntry[];
 
     if (geminiApiKey) {
-      // Gemini path — only when user has explicitly configured an API key
       onProgress?.('Connecting to Gemini…');
       try {
         const { analyzeWithGemini } = await import('@/lib/geminiTopics');
         topics = await analyzeWithGemini(content, geminiApiKey, onProgress);
       } catch (err: any) {
-        // Fallback to local parsing if Gemini fails (e.g. quota exceeded)
         onProgress?.('Gemini failed, using local parser…');
-        const { smartSplitTopics } = await import('@/lib/smartTopicParser');
-        await new Promise(r => setTimeout(r, 20)); // yield for progress UI
-        topics = smartSplitTopics(content);
-        // Prepend an error note to the first topic title so they know it fell back
-        if (topics.length > 0 && err.message?.includes('429')) {
+        // ── Use async parser for richer summaries on the fallback path ──────
+        const { smartSplitTopicsAsync } = await import('@/lib/smartTopicParser');
+        topics = await smartSplitTopicsAsync(content);
+        if (err.message?.includes('429')) {
           onProgress?.('Quota exhausted. Used local parser.');
         }
       }
     } else {
-      // Smart local parser — zero API calls, instant, works offline
+      // ── Zero-API path: async parser gives the best local summaries ─────────
+      // Uses LSA + TextRank + LexRank + BM25 + MMR — 100% offline.
       onProgress?.('Analyzing topics…');
-      const { smartSplitTopics } = await import('@/lib/smartTopicParser');
-      // Run synchronously but yield once so progress message renders
-      await new Promise(r => setTimeout(r, 20));
-      topics = smartSplitTopics(content);
+      const { smartSplitTopicsAsync } = await import('@/lib/smartTopicParser');
+      await new Promise(r => setTimeout(r, 20)); // yield so progress message renders
+      topics = await smartSplitTopicsAsync(content);
     }
 
-    // --- Post-Processing To Fix Bad AI/Fallback Blocks ---
+    // ── Post-Processing ──────────────────────────────────────────────────────
     let cleanTopics: TopicEntry[] = [];
     for (const t of topics) {
       let title = t.title.trim();
       let body = t.body.trim();
 
-      // 1. Skip excessively tiny/empty blocks (e.g. just raw lines/spaces)
-      if (body.replace(/[-\s*_]/g, '').length < 15) {
-        continue;
-      }
+      // Skip excessively tiny/empty blocks
+      if (body.replace(/[-\s*_]/g, '').length < 15) continue;
 
-      // 1b. Skip conversational AI filler blocks (e.g. ChatGPT preamble)
+      // Skip conversational AI filler blocks
       const bodyLower = body.toLowerCase();
       const titleLower = title.toLowerCase();
       const isConversationalFiller =
@@ -197,40 +190,49 @@ export async function runAiAnalysis(
         titleLower.includes('structured, interview-ready') ||
         (bodyLower.length < 150 && (bodyLower.startsWith('here is') || bodyLower.startsWith('below are')));
 
-      if (isConversationalFiller && !body.includes('```')) {
-        continue;
-      }
+      if (isConversationalFiller && !body.includes('```')) continue;
 
-      // 2. Fix URLs generated as Title
+      // Fix URLs as titles
       if (/^https?:\/\//i.test(title)) {
         const validLines = body.split('\n').map(l => l.trim()).filter(l => l.length > 0 && !/^https?:\/\//i.test(l));
-        title = validLines.length > 0 ? validLines[0].replace(/^#{1,6}\s+/, '').slice(0, 50) : "Resource Link";
+        title = validLines.length > 0 ? validLines[0].replace(/^#{1,6}\s+/, '').slice(0, 50) : 'Resource Link';
       }
 
-      // 3. Augment single-word titles (like "Advantages") without context
+      // Augment single-word titles
       if (title.split(/\s+/).length === 1 && title.length < 16) {
         const validLines = body.split('\n').map(l => l.trim()).filter(l => l.length > 10 && !/^https?:\/\//i.test(l));
         if (validLines.length > 0) {
-          let extraContext = validLines[0].replace(/^#{1,6}\s+/, '').replace(/^[-*•]\s+/, '').slice(0, 40);
+          const extraContext = validLines[0].replace(/^#{1,6}\s+/, '').replace(/^[-*•]\s+/, '').slice(0, 40);
           title = `${title} — ${extraContext}`;
         }
       }
 
-      // Cleanup trailing punctuation on titles generated by augmenting
       title = title.replace(/[:;-]+$/, '').trim();
+
+      // ── Summary quality gate ─────────────────────────────────────────────
+      // The async path already set a high-quality summary; only regenerate
+      // if the existing summary is too short/invalid or is just a copy of body.
+      const summaryIsValid = (
+        t.summary &&
+        t.summary.trim().length > 30 &&
+        !t.summary.startsWith(body.slice(0, 20))
+      );
 
       cleanTopics.push({
         title,
         body,
-        summary: t.summary && t.summary.trim().length > 10 && !t.summary.startsWith(body.slice(0, 20))
+        summary: summaryIsValid
           ? t.summary
-          : generateLocalSummary(body)
+          : generateLocalSummary(body, 6, title),
       });
     }
 
-    // Safety fallback
     if (cleanTopics.length === 0) {
-      cleanTopics = [{ title: "Note Content", body: content, summary: content.slice(0, 800) + '...' }];
+      cleanTopics = [{
+        title: 'Note Content',
+        body: content,
+        summary: generateLocalSummary(content, 8, 'Note Content'),
+      }];
     }
 
     await setCachedTopics(noteId, content, cleanTopics);
@@ -241,61 +243,41 @@ export async function runAiAnalysis(
   }
 }
 
-
 /**
- * parseTopics — splits a note into topics by looking for section dividers.
- *
- * Rule: wherever 2 or more `---` lines appear in a row (optionally surrounded
- * by blank lines) the content is considered a new topic block.
- *
- * This matches the user's note format exactly:
- *   ---
- *   ---
- *   ---        ← this group triggers a split
+ * parseTopics — fast sync split on --- separators.
+ * Used for the daily topic picker and widget sync (must stay synchronous).
+ * Summaries here are intentionally short (6 sentences) — just enough for
+ * the daily-topic card preview. Full summaries come from the AI cache.
  */
 export function parseTopics(note: Note): TopicEntry[] {
   const raw = note.content;
   if (!raw.trim()) return [];
 
-  // ── Title extractor ──────────────────────────────────────────────────────
   const extractTitle = (text: string): string => {
-    // 1. Get all lines in the block
     const allLines = text.split('\n').map(l => l.trim()).filter(l => l.length > 0);
-
-    // 2. Find the first line that is NOT just a raw URL/link
     let firstValidLine = '';
     for (const line of allLines) {
-      if (line.startsWith('http://') || line.startsWith('https://')) {
-        continue; // skip naked links
-      }
+      if (line.startsWith('http://') || line.startsWith('https://')) continue;
       firstValidLine = line;
       break;
     }
-
-    // 3. If everything was a link, fallback to the very first line anyway
     if (!firstValidLine && allLines.length > 0) firstValidLine = allLines[0];
 
-    // 4. Strip ONLY markdown/numbering block-level decorations for the clean title
-    // but LEAVE inline styling (**, __, `) intact so they render as rich text
     return firstValidLine
-      .replace(/^#{1,6}\s+/, '')   // ## Heading
-      .replace(/^\d+[\.\)]\s+/, '') // 1. Numbered
-      .replace(/^[IVX]+[\.\)]\s+/, '') // I. Roman
-      .replace(/^[★✦◆▶→•]\s+/, '') // Symbol prefix
+      .replace(/^#{1,6}\s+/, '')
+      .replace(/^\d+[\.\)]\s+/, '')
+      .replace(/^[IVX]+[\.\)]\s+/, '')
+      .replace(/^[★✦◆▶→•]\s+/, '')
       .trim()
       .slice(0, 100) || 'Topic';
   };
 
-  // ── Split on 2+ consecutive --- lines (the user's section separator) ─────
-  // Strategy: scan lines and detect a run of 2+ `---` lines (with optional
-  // blank lines between them). Each such run ends the current block.
   const lines = raw.split('\n');
   const blocks: string[] = [];
   let current: string[] = [];
-  let hrCount = 0; // consecutive --- lines seen
+  let hrCount = 0;
 
   const flush = () => {
-    // Remove leading/trailing blank lines from accumulated block
     const text = current.join('\n').trim();
     if (text.length > 0) blocks.push(text);
     current = [];
@@ -308,38 +290,40 @@ export function parseTopics(note: Note): TopicEntry[] {
 
     if (isHR) {
       hrCount++;
-      // Don't add the --- itself to the content block
     } else if (trimmed === '') {
-      // Blank line: if we're in a separator run, keep counting; otherwise add to block
-      // (do nothing — blank lines between --- are fine, keep hrCount)
       if (hrCount === 0) {
-        current.push(line); // normal blank line inside content
+        current.push(line);
       }
-      // else: ignore blank lines that are part of the separator group
+      // ignore blank lines within separator groups
     } else {
-      // Real content line
       if (hrCount >= 2) {
-        // We just passed a section separator (2+ ---): flush the current block
         flush();
       } else if (hrCount === 1) {
-        // Only a single ---, it's likely a decorative horizontal rule inside a section
-        // Add it to the current block content
         current.push('---');
       }
       hrCount = 0;
       current.push(line);
     }
   }
-  // Flush the last block
   flush();
 
-  if (blocks.length === 0) return [{ title: extractTitle(raw), body: raw.trim(), summary: generateLocalSummary(raw.trim()) }];
+  if (blocks.length === 0) {
+    return [{
+      title: extractTitle(raw),
+      body: raw.trim(),
+      summary: generateLocalSummary(raw.trim(), 6, extractTitle(raw)),
+    }];
+  }
 
-  return blocks.map(block => ({
-    title: extractTitle(block),
-    body: block,
-    summary: generateLocalSummary(block),
-  }));
+  return blocks.map(block => {
+    const title = extractTitle(block);
+    return {
+      title,
+      body: block,
+      // 6 sentences — enough for card preview; AI cache has richer version
+      summary: generateLocalSummary(block, 6, title),
+    };
+  });
 }
 
 
@@ -406,6 +390,28 @@ export function NotesProvider({ children }: { children: ReactNode }) {
   const [markedTopics, setMarkedTopics] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
+    WidgetManager.updateStreak(streak.currentStreak);
+  }, [streak.currentStreak]);
+
+  useEffect(() => {
+    if (dailyTopic && notes.length > 0) {
+      const note = notes.find(n => n.id === dailyTopic.noteId);
+      const folder = folders.find(f => f.id === note?.folderId);
+      if (note && folder) {
+        const topics = parseTopics(note);
+        const topic = topics[dailyTopic.topicIndex];
+        if (topic) {
+          WidgetManager.updatePick({
+            title: topic.title,
+            folder: folder.name,
+            color: folder.color,
+          });
+        }
+      }
+    }
+  }, [dailyTopic, notes, folders]);
+
+  useEffect(() => {
     loadAllData();
   }, []);
 
@@ -424,7 +430,6 @@ export function NotesProvider({ children }: { children: ReactNode }) {
       if (geminiKey) setGeminiApiKeyState(geminiKey);
       const loadedFolders: Folder[] = foldersJson ? JSON.parse(foldersJson) : [];
       const loadedNotesRaw: any[] = notesJson ? JSON.parse(notesJson) : [];
-      // Migrate old notes missing tags field
       const loadedNotes: Note[] = loadedNotesRaw.map(n => ({ tags: [], ...n }));
       const loadedStreakRaw: any = streakJson ? JSON.parse(streakJson) : {};
       const loadedStreak: StreakData = {
@@ -439,13 +444,19 @@ export function NotesProvider({ children }: { children: ReactNode }) {
       setNotes(loadedNotes);
       setStreak(loadedStreak);
       setTopicProgress(loadedSR);
+      if (markedJson) setMarkedTopics(JSON.parse(markedJson));
 
       const today = getTodayString();
-      if (loadedDaily && loadedDaily.date === today) {
+      const topicKey = loadedDaily ? getTopicKey(loadedDaily.noteId, loadedDaily.topicIndex) : '';
+      const currentDailyIsHard = loadedDaily && loadedSR[topicKey]?.lastRating === 'hard';
+      const hasAnyHards = Object.values(loadedSR).some(p => p.lastRating === 'hard');
+
+      if (loadedDaily && loadedDaily.date === today && (currentDailyIsHard || !hasAnyHards)) {
         setDailyTopic(loadedDaily);
       } else if (loadedNotes.length > 0) {
-        await rollDailyTopicWithNotes(loadedNotes);
+        await rollDailyTopicWithNotes(loadedNotes, loadedSR);
       }
+
     } catch (e) {
       console.error('Failed to load data', e);
     } finally {
@@ -453,21 +464,35 @@ export function NotesProvider({ children }: { children: ReactNode }) {
     }
   }
 
-  async function rollDailyTopicWithNotes(currentNotes: Note[]) {
+  async function rollDailyTopicWithNotes(currentNotes: Note[], srData?: Record<string, TopicProgress>) {
     const allTopics: DailyTopic[] = [];
+    const activeSR = srData || topicProgress;
     for (const note of currentNotes) {
       const topics = parseTopics(note);
       topics.forEach((_, i) => {
         allTopics.push({ date: getTodayString(), noteId: note.id, folderId: note.folderId, topicIndex: i });
       });
     }
-    if (allTopics.length === 0) {
+    const dateStr = getTodayString();
+    const dateInt = parseInt(dateStr.replace(/-/g, '')) || 0;
+
+    const hardTopics = allTopics.filter(t => {
+      const key = getTopicKey(t.noteId, t.topicIndex);
+      return activeSR?.[key]?.lastRating === 'hard';
+    });
+
+    let selected: DailyTopic;
+    if (hardTopics.length > 0) {
+      selected = hardTopics[dateInt % hardTopics.length];
+    } else if (allTopics.length > 0) {
+      selected = allTopics[dateInt % allTopics.length];
+    } else {
       setDailyTopic(null);
       return;
     }
-    const random = allTopics[Math.floor(Math.random() * allTopics.length)];
-    setDailyTopic(random);
-    await AsyncStorage.setItem(STORAGE_KEYS.DAILY_TOPIC, JSON.stringify(random));
+
+    setDailyTopic(selected);
+    await AsyncStorage.setItem(STORAGE_KEYS.DAILY_TOPIC, JSON.stringify(selected));
   }
 
   const rollDailyTopic = useCallback(async () => {
@@ -508,7 +533,6 @@ export function NotesProvider({ children }: { children: ReactNode }) {
     const note = notes.find(n => n.id === dailyTopic.noteId);
     if (!note) return null;
 
-    // Attempt to load AI-generated topics from cache first
     const { getCachedTopics } = await import('@/lib/topicCache');
     let topics = await getCachedTopics(note.id, note.content);
     if (!topics) topics = parseTopics(note);
@@ -536,7 +560,6 @@ export function NotesProvider({ children }: { children: ReactNode }) {
       AsyncStorage.setItem(STORAGE_KEYS.SR, JSON.stringify(updated));
       return updated;
     });
-    // Increment daily review count
     setStreak(prev => {
       const updated = {
         ...prev,
@@ -602,7 +625,6 @@ export function NotesProvider({ children }: { children: ReactNode }) {
     setNotes(updated);
     await AsyncStorage.setItem(STORAGE_KEYS.NOTES, JSON.stringify(updated));
 
-    // Auto-generate AI summaries in the background (fire-and-forget)
     if (geminiApiKey) {
       setTimeout(() => {
         runAiAnalysis(note.id, note.content, geminiApiKey).catch(e => console.warn('Background AI skipped/failed:', e));
@@ -621,9 +643,10 @@ export function NotesProvider({ children }: { children: ReactNode }) {
     setNotes(updated);
     await AsyncStorage.setItem(STORAGE_KEYS.NOTES, JSON.stringify(updated));
 
-    // Auto-generate AI summaries in the background (fire-and-forget)
-    if (geminiApiKey && content.trim().length > 10) {
+    if (content.trim().length > 10) {
       setTimeout(() => {
+        // Always regenerate with the best available local parser when content changes.
+        // If a Gemini key is present, use Gemini; otherwise fall through to async local parser.
         runAiAnalysis(id, content, geminiApiKey).catch(e => console.warn('Background AI skipped/failed:', e));
       }, 500);
     }

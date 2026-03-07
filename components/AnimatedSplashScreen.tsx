@@ -118,6 +118,11 @@ export default function AnimatedSplashScreen({ onAnimationFinish, onReady }: Pro
                 </Animated.View>
 
             </View>
+
+            {/* Developer Credit */}
+            <Animated.Text style={[styles.developerCredit, { opacity: barOpacity }]}>
+                Developed by Rahul Varanasi
+            </Animated.Text>
         </Animated.View>
     );
 }
@@ -163,5 +168,14 @@ const styles = StyleSheet.create({
         textAlign: 'center',
         width: 150, // Keep it fixed
         includeFontPadding: false,
+    },
+    developerCredit: {
+        position: 'absolute',
+        bottom: 50,
+        fontFamily: 'DMSans_500Medium',
+        fontSize: 11,
+        color: '#FFFFFF',
+        opacity: 0.5,
+        letterSpacing: 1.2,
     },
 });

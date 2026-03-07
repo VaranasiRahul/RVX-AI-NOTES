@@ -1,17 +1,19 @@
 import React, { createContext, useContext, useState, useEffect, useMemo, ReactNode } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { ColorPalette, DarkBlueColors, LightWarmColors } from '@/constants/colors';
+import { ColorPalette, DarkBlueColors, LightWarmColors, MidnightGlassColors } from '@/constants/colors';
 
-export type ThemeName = 'darkBlue' | 'lightWarm';
+export type ThemeName = 'darkBlue' | 'lightWarm' | 'midnightGlass';
 
 const THEME_PALETTES: Record<ThemeName, ColorPalette> = {
     darkBlue: DarkBlueColors,
     lightWarm: LightWarmColors,
+    midnightGlass: MidnightGlassColors,
 };
 
 const THEME_LABELS: Record<ThemeName, string> = {
     darkBlue: 'Dark Blue',
     lightWarm: 'Light Warm',
+    midnightGlass: 'Midnight Glass',
 };
 
 const THEME_STORAGE_KEY = 'reviseit_theme';

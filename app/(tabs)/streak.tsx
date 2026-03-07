@@ -199,7 +199,7 @@ export default function StreakScreen() {
   return (
     <View style={[styles.container, { backgroundColor: Colors.background }]}>
       <ScrollView
-        contentContainerStyle={[styles.scrollContent, { paddingBottom: 100, paddingTop: topPad + 16 }]}
+        contentContainerStyle={[styles.scrollContent, { paddingBottom: 100, paddingTop: topPad + 28 }]}
         showsVerticalScrollIndicator={false}
       >
         {/* Plain header — no BlurView */}
@@ -267,7 +267,12 @@ export default function StreakScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1 },
   scrollContent: { paddingHorizontal: 20, gap: 20 },
-  headerTitle: { fontFamily: "PlayfairDisplay_700Bold", fontSize: 28 },
+  headerTitle: {
+    fontFamily: "DMSans_500Medium",
+    fontSize: 22,
+    letterSpacing: 4,
+    textTransform: 'uppercase',
+  },
   mainStreakCard: { borderRadius: 24, padding: 28, alignItems: "center", borderWidth: 1, gap: 8 },
   flameRow: { flexDirection: "row", alignItems: "center", gap: 12 },
   streakNumber: { fontFamily: "PlayfairDisplay_700Bold", fontSize: 64, lineHeight: 68 },
@@ -294,7 +299,13 @@ const styles = StyleSheet.create({
   barFill: { width: "100%", borderRadius: 4 },
   barLabel: { fontFamily: "DMSans_500Medium", fontSize: 11 },
   section: { gap: 14 },
-  sectionTitle: { fontFamily: "PlayfairDisplay_600SemiBold", fontSize: 18 },
+  sectionTitle: {
+    fontFamily: "DMSans_500Medium",
+    fontSize: 14,
+    letterSpacing: 2,
+    textTransform: 'uppercase',
+    opacity: 0.7
+  },
   calendarGrid: { flexDirection: "row", flexWrap: "wrap", gap: 6 },
   calendarCell: { width: 36, height: 36, borderRadius: 8, alignItems: "center", justifyContent: "center", borderWidth: 1 },
   calendarCellText: { fontFamily: "DMSans_400Regular", fontSize: 12 },

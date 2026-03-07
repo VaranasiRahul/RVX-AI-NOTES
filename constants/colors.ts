@@ -71,6 +71,30 @@ export const LightWarmColors: ColorPalette = {
   },
 };
 
+export const MidnightGlassColors: ColorPalette = {
+  background: '#020203',
+  surface: '#0A0A0C',
+  surfaceElevated: '#121215',
+  card: '#111214', // Premium dark tint as requested
+  border: 'rgba(255, 255, 255, 0.05)', // Extremely subtle inner glow
+  borderLight: 'rgba(255, 255, 255, 0.12)',
+  text: '#FFFFFF',
+  textSecondary: '#94A3B8',
+  textMuted: '#475569',
+  accent: '#6366F1',
+  accentLight: '#818CF8',
+  accentDark: '#4338CA',
+  success: '#10B981',
+  error: '#EF4444',
+  warning: '#F59E0B',
+  streak: '#F43F5E',
+  light: {
+    tint: '#6366F1',
+    tabIconDefault: '#475569',
+    tabIconSelected: '#6366F1',
+  },
+};
+
 // Default export — used by files not yet migrated to ThemeContext
 const Colors = DarkBlueColors;
 export default Colors;
