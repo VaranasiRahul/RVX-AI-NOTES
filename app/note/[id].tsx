@@ -14,18 +14,24 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { router, useLocalSearchParams } from "expo-router";
 import Animated, { FadeIn, FadeInDown } from "react-native-reanimated";
 import * as Haptics from "expo-haptics";
-import { Ionicons } from "@expo/vector-icons";
+import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import Markdown from "react-native-markdown-display";
 import { useNotes, parseTopics, runAiAnalysis } from "@/context/NotesContext";
 import { useTheme } from "@/context/ThemeContext";
 
 const MARKDOWN_TOOLBAR = [
-    { label: "B", wrap: ["**", "**"], placeholder: "bold text", icon: null },
-    { label: "I", wrap: ["*", "*"], placeholder: "italic text", icon: null },
-    { label: "H", wrap: ["## ", ""], placeholder: "Heading", icon: null },
-    { label: "`", wrap: ["`", "`"], placeholder: "code", icon: null },
-    { label: "—", wrap: ["- ", ""], placeholder: "list item", icon: null },
-    { label: ">", wrap: ["> ", ""], placeholder: "quote", icon: null },
+    { icon: "format-bold", wrap: ["**", "**"], placeholder: "bold text" },
+    { icon: "format-italic", wrap: ["*", "*"], placeholder: "italic text" },
+    { icon: "format-strikethrough-variant", wrap: ["~~", "~~"], placeholder: "strikethrough" },
+    { icon: "marker", wrap: ["==", "=="], placeholder: "highlight" },
+    { icon: "format-header-2", wrap: ["## ", ""], placeholder: "Heading" },
+    { icon: "format-list-bulleted", wrap: ["- ", ""], placeholder: "list item" },
+    { icon: "format-list-numbered", wrap: ["1. ", ""], placeholder: "list item" },
+    { icon: "checkbox-marked-outline", wrap: ["- [ ] ", ""], placeholder: "todo item" },
+    { icon: "format-quote-close", wrap: ["> ", ""], placeholder: "quote" },
+    { icon: "code-tags", wrap: ["`", "`"], placeholder: "code" },
+    { icon: "console", wrap: ["\n```\n", "\n```\n"], placeholder: "code block" },
+    { icon: "image-outline", wrap: ["![alt text](", ")"], placeholder: "image url" },
 ];
 
 export default function NoteEditorScreen() {
@@ -84,7 +90,7 @@ export default function NoteEditorScreen() {
             updateNote(id!, title, content);
             setIsSaved(true);
         }, 800);
-    }, [content, title]);
+    }, [content, title, id, updateNote]);
 
     const handleDone = () => {
         if (saveTimeout.current) clearTimeout(saveTimeout.current);
@@ -116,7 +122,7 @@ export default function NoteEditorScreen() {
         try {
             const generated = await analyzeNoteWithAI(id, content, (msg) => setAiStatus(msg));
             setCachedTopics(generated);
-            setAiStatus('Done ✓');
+            setAiStatus('Done. Now you can see the summarized notes in the AI summary section.');
             setMode('topics');
             Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
         } catch (e: any) {
@@ -124,7 +130,7 @@ export default function NoteEditorScreen() {
         } finally {
             aiLockRef.current = false; // release lock
             setAiAnalyzing(false);
-            setTimeout(() => setAiStatus(null), 3000);
+            setTimeout(() => setAiStatus(null), 5000);
         }
     };
 
@@ -167,6 +173,7 @@ export default function NoteEditorScreen() {
         ordered_list_icon: { fontFamily: "DMSans_600SemiBold", fontSize: 14, color: Colors.accent, marginRight: 8, minWidth: 20 },
         hr: { backgroundColor: Colors.border, height: 1, marginVertical: 14 },
         link: { color: Colors.accent, textDecorationLine: "underline" },
+        s: { textDecorationLine: "line-through", color: Colors.textMuted }, // Strikethrough
     });
 
     return (
@@ -231,7 +238,7 @@ export default function NoteEditorScreen() {
             {aiStatus && (
                 <View style={[styles.aiBanner, { backgroundColor: Colors.accent + '15', borderBottomColor: Colors.accent + '30' }]}>
                     <Ionicons name="sparkles" size={12} color={Colors.accent} />
-                    <Text style={[styles.aiBannerText, { color: Colors.accent }]} numberOfLines={1}>{aiStatus}</Text>
+                    <Text style={[styles.aiBannerText, { color: Colors.accent }]}>{aiStatus}</Text>
                 </View>
             )}
 
@@ -262,13 +269,13 @@ export default function NoteEditorScreen() {
                 <View style={styles.floatingToolbarContainer}>
                     <View style={[styles.glassToolbar, { backgroundColor: 'rgba(255, 255, 255, 0.08)', borderColor: 'rgba(255, 255, 255, 0.12)' }]}>
                         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.toolbarScroll}>
-                            {MARKDOWN_TOOLBAR.map((btn) => (
+                            {MARKDOWN_TOOLBAR.map((btn, index) => (
                                 <TouchableOpacity
-                                    key={btn.label}
+                                    key={index}
                                     style={[styles.glassToolbarBtn, { backgroundColor: Colors.card }]}
                                     onPress={() => insertMarkdown(btn.wrap as [string, string], btn.placeholder)}
                                 >
-                                    <Text style={[styles.glassToolbarBtnText, { color: Colors.accent }]}>{btn.label}</Text>
+                                    <MaterialCommunityIcons name={btn.icon as any} size={20} color={Colors.accent} />
                                 </TouchableOpacity>
                             ))}
                             <View style={styles.toolbarDivider} />
@@ -520,7 +527,6 @@ const styles = StyleSheet.create({
         width: 30,
         height: 30,
         borderRadius: 15,
-        filter: 'blur(10px)',
         zIndex: 1,
     },
     topicMainBox: { flex: 1, gap: 4 },

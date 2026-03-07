@@ -19,11 +19,13 @@
     "android": {
       "package": "com.reviseit",
       "softwareKeyboardLayoutMode": "resize",
+      "permissions": [
+        "android.permission.READ_EXTERNAL_STORAGE",
+        "android.permission.WRITE_EXTERNAL_STORAGE"
+      ],
       "adaptiveIcon": {
-        "backgroundColor": "#0F0E0D",
-        "foregroundImage": "./assets/images/android-icon-foreground.png",
-        "backgroundImage": "./assets/images/android-icon-background.png",
-        "monochromeImage": "./assets/images/android-icon-monochrome.png"
+        "backgroundColor": "#000000",
+        "foregroundImage": "./assets/images/android-icon-foreground-padded.png"
       }
     },
     "web": {
@@ -38,7 +40,25 @@
       ],
       "expo-font",
       "expo-web-browser",
-      "onnxruntime-react-native"
+      "onnxruntime-react-native",
+      [
+        "react-native-android-widget",
+        {
+          "widgets": [
+            {
+              "name": "MarkedBlockWidget",
+              "label": "Marked Blocks",
+              "description": "Displays your bookmarked revision blocks",
+              "minWidth": "320dp",
+              "minHeight": "120dp",
+              "targetCellWidth": 4,
+              "targetCellHeight": 2,
+              "updatePeriodMillis": 3600000,
+              "resizeMode": "horizontal_vertical"
+            }
+          ]
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true,

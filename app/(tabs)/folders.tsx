@@ -438,7 +438,6 @@ const styles = StyleSheet.create({
     width: 30,
     height: 30,
     borderRadius: 15,
-    filter: 'blur(20px)',
     zIndex: 1,
   },
   contentBox: { flex: 1, justifyContent: 'center' },

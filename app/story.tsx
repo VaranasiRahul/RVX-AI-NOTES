@@ -191,6 +191,16 @@ export default function StoryScreen() {
         }
     };
 
+    // Auto-close if the last topic was unsaved from within the viewer
+    useEffect(() => {
+        if (!isLoading && topics.length === 0) {
+            const timer = setTimeout(() => {
+                if (router.canGoBack()) router.back();
+            }, 300);
+            return () => clearTimeout(timer);
+        }
+    }, [isLoading, topics.length]);
+
     if (isLoading) {
         return (
             <View style={styles.loadingContainer}>
@@ -200,11 +210,6 @@ export default function StoryScreen() {
     }
 
     if (topics.length === 0) {
-        // Automatically close the viewer if the user unsaves the very last topic in the list 
-        setTimeout(() => {
-            if (router.canGoBack()) router.back();
-        }, 300);
-
         return (
             <View style={styles.loadingContainer}>
                 <Text style={styles.loadingText}>No saved topics.</Text>

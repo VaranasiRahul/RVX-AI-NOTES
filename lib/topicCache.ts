@@ -1,9 +1,16 @@
 /**
- * Topic Cache — persists AI-generated topic splits in AsyncStorage.
- * Key: `ai_topics__{noteId}__{contentHash}`
- * Falls back gracefully when no AI result exists.
+ * Topic Cache — persists AI-generated topic splits in FileSystem.
+ * Files are saved to document directory to prevent OS cleaners from wiping it.
  */
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import {
+    documentDirectory,
+    getInfoAsync,
+    makeDirectoryAsync,
+    readAsStringAsync,
+    writeAsStringAsync,
+    readDirectoryAsync,
+    deleteAsync
+} from 'expo-file-system/legacy';
 
 export interface TopicEntry {
     title: string;
@@ -11,7 +18,7 @@ export interface TopicEntry {
     summary: string;
 }
 
-const PREFIX = 'ai_topics_v18__';
+const CACHE_DIR = `${documentDirectory ?? 'file:///data/user/0/com.reviseit/files/'}ai_topics_v18/`;
 
 // ── Cache Event Emitter ────────────────────────────────────────────────────────
 type CacheListener = () => void;
@@ -36,8 +43,19 @@ function hashContent(str: string): string {
     return (hash >>> 0).toString(36); // unsigned → base36 string
 }
 
-function cacheKey(noteId: string, content: string): string {
-    return `${PREFIX}${noteId}__${hashContent(content)}`;
+async function ensureDir() {
+    try {
+        const info = await getInfoAsync(CACHE_DIR);
+        if (!info.exists) {
+            await makeDirectoryAsync(CACHE_DIR, { intermediates: true });
+        }
+    } catch {
+        // ignore
+    }
+}
+
+function getFilePath(noteId: string, content: string): string {
+    return `${CACHE_DIR}${noteId}__${hashContent(content)}.json`;
 }
 
 // ── Get cached AI topics (returns null if not cached or content changed) ──────
@@ -46,8 +64,11 @@ export async function getCachedTopics(
     content: string
 ): Promise<TopicEntry[] | null> {
     try {
-        const raw = await AsyncStorage.getItem(cacheKey(noteId, content));
-        if (!raw) return null;
+        await ensureDir();
+        const filePath = getFilePath(noteId, content);
+        const info = await getInfoAsync(filePath);
+        if (!info.exists) return null;
+        const raw = await readAsStringAsync(filePath);
         return JSON.parse(raw) as TopicEntry[];
     } catch {
         return null;
@@ -61,7 +82,13 @@ export async function setCachedTopics(
     topics: TopicEntry[]
 ): Promise<void> {
     try {
-        await AsyncStorage.setItem(cacheKey(noteId, content), JSON.stringify(topics));
+        await ensureDir();
+
+        // Before saving new cache, delete old caches for this note to prevent bloating
+        await clearCachedTopics(noteId);
+
+        const filePath = getFilePath(noteId, content);
+        await writeAsStringAsync(filePath, JSON.stringify(topics));
         notifyCacheUpdated();
     } catch {
         // storage full or unavailable — silently ignore
@@ -71,11 +98,16 @@ export async function setCachedTopics(
 // ── Clear one note's cache (call after note deletion or manual reset) ─────────
 export async function clearCachedTopics(noteId?: string): Promise<void> {
     try {
-        const keys = await AsyncStorage.getAllKeys();
+        await ensureDir();
+        const files = await readDirectoryAsync(CACHE_DIR);
+
         const toRemove = noteId
-            ? keys.filter(k => k.startsWith(`${PREFIX}${noteId}__`))
-            : keys.filter(k => k.startsWith(PREFIX));
-        if (toRemove.length) await AsyncStorage.multiRemove(toRemove);
+            ? files.filter(f => f.startsWith(`${noteId}__`))
+            : files;
+
+        await Promise.all(
+            toRemove.map(file => deleteAsync(`${CACHE_DIR}${file}`, { idempotent: true }))
+        );
     } catch {
         // ignore
     }
@@ -84,8 +116,9 @@ export async function clearCachedTopics(noteId?: string): Promise<void> {
 // ── Check if a note already has a cached AI result (any content hash) ─────────
 export async function hasAnyCache(noteId: string): Promise<boolean> {
     try {
-        const keys = await AsyncStorage.getAllKeys();
-        return keys.some(k => k.startsWith(`${PREFIX}${noteId}__`));
+        await ensureDir();
+        const files = await readDirectoryAsync(CACHE_DIR);
+        return files.some(f => f.startsWith(`${noteId}__`));
     } catch {
         return false;
     }

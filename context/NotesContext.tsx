@@ -1,9 +1,12 @@
 import React, { createContext, useContext, useState, useEffect, useMemo, ReactNode, useCallback } from 'react';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Crypto from 'expo-crypto';
 import type { TopicEntry } from '@/lib/topicCache';
 import { generateLocalSummary } from '@/lib/localSummarizer';
 import { WidgetManager } from '@/lib/widget';
+import {
+  loadFromPersistentStore,
+  saveToPersistentStore,
+} from '@/lib/persistentStore';
 
 export interface Folder {
   id: string;
@@ -151,18 +154,15 @@ export async function runAiAnalysis(
     let topics: TopicEntry[];
 
     if (geminiApiKey) {
-      onProgress?.('Connecting to Gemini…');
+      onProgress?.('AI started working…');
       try {
-        const { analyzeWithGemini } = await import('@/lib/geminiTopics');
+        const { analyzeWithGemini } = await import('@/lib/aiIntelligence');
         topics = await analyzeWithGemini(content, geminiApiKey, onProgress);
       } catch (err: any) {
-        onProgress?.('Gemini failed, using local parser…');
+        onProgress?.('AI started working…');
         // ── Use async parser for richer summaries on the fallback path ──────
         const { smartSplitTopicsAsync } = await import('@/lib/smartTopicParser');
         topics = await smartSplitTopicsAsync(content);
-        if (err.message?.includes('429')) {
-          onProgress?.('Quota exhausted. Used local parser.');
-        }
       }
     } else {
       // ── Zero-API path: async parser gives the best local summaries ─────────
@@ -194,13 +194,13 @@ export async function runAiAnalysis(
 
       // Fix URLs as titles
       if (/^https?:\/\//i.test(title)) {
-        const validLines = body.split('\n').map(l => l.trim()).filter(l => l.length > 0 && !/^https?:\/\//i.test(l));
+        const validLines = body.split('\n').map((l: string) => l.trim()).filter((l: string) => l.length > 0 && !/^https?:\/\//i.test(l));
         title = validLines.length > 0 ? validLines[0].replace(/^#{1,6}\s+/, '').slice(0, 50) : 'Resource Link';
       }
 
       // Augment single-word titles
       if (title.split(/\s+/).length === 1 && title.length < 16) {
-        const validLines = body.split('\n').map(l => l.trim()).filter(l => l.length > 10 && !/^https?:\/\//i.test(l));
+        const validLines = body.split('\n').map((l: string) => l.trim()).filter((l: string) => l.length > 10 && !/^https?:\/\//i.test(l));
         if (validLines.length > 0) {
           const extraContext = validLines[0].replace(/^#{1,6}\s+/, '').replace(/^[-*•]\s+/, '').slice(0, 40);
           title = `${title} — ${extraContext}`;
@@ -254,7 +254,7 @@ export function parseTopics(note: Note): TopicEntry[] {
   if (!raw.trim()) return [];
 
   const extractTitle = (text: string): string => {
-    const allLines = text.split('\n').map(l => l.trim()).filter(l => l.length > 0);
+    const allLines = text.split('\n').map((l: string) => l.trim()).filter((l: string) => l.length > 0);
     let firstValidLine = '';
     for (const line of allLines) {
       if (line.startsWith('http://') || line.startsWith('https://')) continue;
@@ -418,33 +418,31 @@ export function NotesProvider({ children }: { children: ReactNode }) {
   async function loadAllData() {
     try {
       const [foldersJson, notesJson, streakJson, dailyJson, srJson, geminiKey, markedJson] = await Promise.all([
-        AsyncStorage.getItem(STORAGE_KEYS.FOLDERS),
-        AsyncStorage.getItem(STORAGE_KEYS.NOTES),
-        AsyncStorage.getItem(STORAGE_KEYS.STREAK),
-        AsyncStorage.getItem(STORAGE_KEYS.DAILY_TOPIC),
-        AsyncStorage.getItem(STORAGE_KEYS.SR),
-        AsyncStorage.getItem(STORAGE_KEYS.GEMINI_KEY),
-        AsyncStorage.getItem(STORAGE_KEYS.MARKED),
+        loadFromPersistentStore<Folder[]>(STORAGE_KEYS.FOLDERS, []),
+        loadFromPersistentStore<Note[]>(STORAGE_KEYS.NOTES, []),
+        loadFromPersistentStore<StreakData | null>(STORAGE_KEYS.STREAK, null),
+        loadFromPersistentStore<DailyTopic | null>(STORAGE_KEYS.DAILY_TOPIC, null),
+        loadFromPersistentStore<Record<string, TopicProgress>>(STORAGE_KEYS.SR, {}),
+        loadFromPersistentStore<string>(STORAGE_KEYS.GEMINI_KEY, ''),
+        loadFromPersistentStore<Record<string, boolean>>(STORAGE_KEYS.MARKED, {}),
       ]);
 
       if (geminiKey) setGeminiApiKeyState(geminiKey);
-      const loadedFolders: Folder[] = foldersJson ? JSON.parse(foldersJson) : [];
-      const loadedNotesRaw: any[] = notesJson ? JSON.parse(notesJson) : [];
-      const loadedNotes: Note[] = loadedNotesRaw.map(n => ({ tags: [], ...n }));
-      const loadedStreakRaw: any = streakJson ? JSON.parse(streakJson) : {};
+      const loadedFolders: Folder[] = foldersJson;
+      const loadedNotes: Note[] = (notesJson || []).map(n => ({ tags: [], ...n }));
       const loadedStreak: StreakData = {
         ...DEFAULT_STREAK,
-        ...loadedStreakRaw,
-        dailyReviewCounts: loadedStreakRaw?.dailyReviewCounts || {},
+        ...(streakJson || {}),
+        dailyReviewCounts: (streakJson as any)?.dailyReviewCounts || {},
       };
-      const loadedDaily: DailyTopic | null = dailyJson ? JSON.parse(dailyJson) : null;
-      const loadedSR: Record<string, TopicProgress> = srJson ? JSON.parse(srJson) : {};
+      const loadedDaily: DailyTopic | null = dailyJson;
+      const loadedSR: Record<string, TopicProgress> = srJson;
 
       setFolders(loadedFolders);
       setNotes(loadedNotes);
       setStreak(loadedStreak);
       setTopicProgress(loadedSR);
-      if (markedJson) setMarkedTopics(JSON.parse(markedJson));
+      if (markedJson) setMarkedTopics(markedJson);
 
       const today = getTodayString();
       const topicKey = loadedDaily ? getTopicKey(loadedDaily.noteId, loadedDaily.topicIndex) : '';
@@ -492,7 +490,7 @@ export function NotesProvider({ children }: { children: ReactNode }) {
     }
 
     setDailyTopic(selected);
-    await AsyncStorage.setItem(STORAGE_KEYS.DAILY_TOPIC, JSON.stringify(selected));
+    await saveToPersistentStore(STORAGE_KEYS.DAILY_TOPIC, selected);
   }
 
   const rollDailyTopic = useCallback(async () => {
@@ -523,7 +521,7 @@ export function NotesProvider({ children }: { children: ReactNode }) {
         },
       };
 
-      AsyncStorage.setItem(STORAGE_KEYS.STREAK, JSON.stringify(updated));
+      saveToPersistentStore(STORAGE_KEYS.STREAK, updated);
       return updated;
     });
   }, []);
@@ -557,7 +555,7 @@ export function NotesProvider({ children }: { children: ReactNode }) {
         interval: 1, easeFactor: 2.5, dueDate: today, reviewCount: 0, lastRating: null,
       };
       const updated = { ...prev, [key]: applySM2(existing, rating) };
-      AsyncStorage.setItem(STORAGE_KEYS.SR, JSON.stringify(updated));
+      saveToPersistentStore(STORAGE_KEYS.SR, updated);
       return updated;
     });
     setStreak(prev => {
@@ -568,7 +566,7 @@ export function NotesProvider({ children }: { children: ReactNode }) {
           [today]: (prev.dailyReviewCounts[today] || 0) + 1,
         },
       };
-      AsyncStorage.setItem(STORAGE_KEYS.STREAK, JSON.stringify(updated));
+      saveToPersistentStore(STORAGE_KEYS.STREAK, updated);
       return updated;
     });
   }, []);
@@ -588,7 +586,7 @@ export function NotesProvider({ children }: { children: ReactNode }) {
     };
     const updated = [...folders, folder];
     setFolders(updated);
-    await AsyncStorage.setItem(STORAGE_KEYS.FOLDERS, JSON.stringify(updated));
+    await saveToPersistentStore(STORAGE_KEYS.FOLDERS, updated);
     return folder;
   }, [folders]);
 
@@ -597,18 +595,21 @@ export function NotesProvider({ children }: { children: ReactNode }) {
       f.id === id ? { ...f, name, ...(color ? { color } : {}) } : f
     );
     setFolders(updated);
-    await AsyncStorage.setItem(STORAGE_KEYS.FOLDERS, JSON.stringify(updated));
+    await saveToPersistentStore(STORAGE_KEYS.FOLDERS, updated);
   }, [folders]);
 
   const deleteFolder = useCallback(async (id: string) => {
     const updatedFolders = folders.filter(f => f.id !== id);
     const updatedNotes = notes.filter(n => n.folderId !== id);
+    const notesToDelete = notes.filter(n => n.folderId === id);
     setFolders(updatedFolders);
     setNotes(updatedNotes);
     await Promise.all([
-      AsyncStorage.setItem(STORAGE_KEYS.FOLDERS, JSON.stringify(updatedFolders)),
-      AsyncStorage.setItem(STORAGE_KEYS.NOTES, JSON.stringify(updatedNotes)),
+      saveToPersistentStore(STORAGE_KEYS.FOLDERS, updatedFolders),
+      saveToPersistentStore(STORAGE_KEYS.NOTES, updatedNotes),
     ]);
+    const { clearCachedTopics } = await import('@/lib/topicCache');
+    await Promise.all(notesToDelete.map(n => clearCachedTopics(n.id)));
   }, [folders, notes]);
 
   const createNote = useCallback(async (folderId: string, title: string): Promise<Note> => {
@@ -623,7 +624,7 @@ export function NotesProvider({ children }: { children: ReactNode }) {
     };
     const updated = [...notes, note];
     setNotes(updated);
-    await AsyncStorage.setItem(STORAGE_KEYS.NOTES, JSON.stringify(updated));
+    await saveToPersistentStore(STORAGE_KEYS.NOTES, updated);
 
     if (geminiApiKey) {
       setTimeout(() => {
@@ -641,7 +642,7 @@ export function NotesProvider({ children }: { children: ReactNode }) {
         : n
     );
     setNotes(updated);
-    await AsyncStorage.setItem(STORAGE_KEYS.NOTES, JSON.stringify(updated));
+    await saveToPersistentStore(STORAGE_KEYS.NOTES, updated);
 
     if (content.trim().length > 10) {
       setTimeout(() => {
@@ -655,7 +656,9 @@ export function NotesProvider({ children }: { children: ReactNode }) {
   const deleteNote = useCallback(async (id: string) => {
     const updated = notes.filter(n => n.id !== id);
     setNotes(updated);
-    await AsyncStorage.setItem(STORAGE_KEYS.NOTES, JSON.stringify(updated));
+    await saveToPersistentStore(STORAGE_KEYS.NOTES, updated);
+    const { clearCachedTopics } = await import('@/lib/topicCache');
+    await clearCachedTopics(id);
   }, [notes]);
 
   const getNotesByFolder = useCallback((folderId: string): Note[] => {
@@ -687,17 +690,17 @@ export function NotesProvider({ children }: { children: ReactNode }) {
     setTopicProgress(importedSR);
 
     await Promise.all([
-      AsyncStorage.setItem(STORAGE_KEYS.FOLDERS, JSON.stringify(importedFolders)),
-      AsyncStorage.setItem(STORAGE_KEYS.NOTES, JSON.stringify(importedNotes)),
-      AsyncStorage.setItem(STORAGE_KEYS.STREAK, JSON.stringify(importedStreak)),
-      AsyncStorage.setItem(STORAGE_KEYS.SR, JSON.stringify(importedSR)),
+      saveToPersistentStore(STORAGE_KEYS.FOLDERS, importedFolders),
+      saveToPersistentStore(STORAGE_KEYS.NOTES, importedNotes),
+      saveToPersistentStore(STORAGE_KEYS.STREAK, importedStreak),
+      saveToPersistentStore(STORAGE_KEYS.SR, importedSR),
     ]);
   }, []);
 
   const setGeminiApiKey = useCallback(async (key: string) => {
     const trimmed = key.trim();
     setGeminiApiKeyState(trimmed);
-    await AsyncStorage.setItem(STORAGE_KEYS.GEMINI_KEY, trimmed);
+    await saveToPersistentStore(STORAGE_KEYS.GEMINI_KEY, trimmed);
   }, []);
 
   const analyzeNoteWithAI = useCallback(async (
@@ -722,7 +725,7 @@ export function NotesProvider({ children }: { children: ReactNode }) {
       } else {
         updated[key] = true;
       }
-      AsyncStorage.setItem(STORAGE_KEYS.MARKED, JSON.stringify(updated));
+      saveToPersistentStore(STORAGE_KEYS.MARKED, updated);
       return updated;
     });
   }, []);

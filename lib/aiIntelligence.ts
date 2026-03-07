@@ -33,7 +33,7 @@ export async function analyzeWithGemini(
     apiKey: string,
     onProgress?: (msg: string) => void
 ): Promise<Topic[]> {
-    onProgress?.('Connecting to Gemini…');
+    onProgress?.('AI started working…');
 
     const trimmed = content.trim();
     if (!trimmed) return [{ title: 'Note', body: content, summary: 'Empty note.' }];
@@ -68,7 +68,7 @@ export async function analyzeWithGemini(
         throw new Error(`Gemini ${res.status}: ${apiMessage}`);
     }
 
-    onProgress?.('Parsing AI response…');
+    onProgress?.('Done. Now you can see the summarized notes in the AI summary section.');
     const json = await res.json();
     const rawText: string =
         json?.candidates?.[0]?.content?.parts?.[0]?.text ?? '';

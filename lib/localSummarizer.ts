@@ -9,6 +9,11 @@
  * ║  • Long boilerplate code penalised; shell/terminal commands boosted         ║
  * ║  • 100% offline — no internet, no native modules                            ║
  * ╚══════════════════════════════════════════════════════════════════════════════╝
+ *
+ * Copyright (c) 2026 Rahul Varanasi. All Rights Reserved.
+ * This file is part of RVX AI Notes — a proprietary software.
+ * Unauthorized copying, distribution, or use is strictly prohibited.
+ * See LICENSE file in the root directory for full terms.
  */
 
 // ─────────────────────────────────────────────────────────────────────────────

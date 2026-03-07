@@ -1,3 +1,9 @@
+/**
+ * Copyright (c) 2026 Rahul Varanasi. All Rights Reserved.
+ * This file is part of RVX AI Notes — a proprietary software.
+ * Unauthorized copying, distribution, or use is strictly prohibited.
+ * See LICENSE file in the root directory for full terms.
+ */
 import { QueryClientProvider } from "@tanstack/react-query";
 import { SplashScreen, Stack } from "expo-router";
 import * as NativeSplashScreen from "expo-splash-screen";
@@ -10,6 +16,8 @@ import { NotesProvider } from "@/context/NotesContext";
 import { ThemeProvider, useTheme } from "@/context/ThemeContext";
 import { requestNotificationPermissions, scheduleDailyReminder } from "@/lib/notifications";
 import { View } from "react-native";
+import { registerWidgetTaskHandler } from "react-native-android-widget";
+import { widgetTaskHandler } from "@/widget/WidgetTaskHandler";
 import AnimatedSplashScreen from "@/components/AnimatedSplashScreen";
 import {
   useFonts,
@@ -17,10 +25,13 @@ import {
   PlayfairDisplay_600SemiBold,
   PlayfairDisplay_700Bold,
 } from "@expo-google-fonts/playfair-display";
-import { DMSans_400Regular, DMSans_500Medium, DMSans_600SemiBold } from "@expo-google-fonts/dm-sans";
+import { DMSans_400Regular, DMSans_500Medium, DMSans_600SemiBold, DMSans_700Bold } from "@expo-google-fonts/dm-sans";
 import { LogBox } from "react-native";
 
 SplashScreen.preventAutoHideAsync();
+
+// Register the widget headless background task for Android
+registerWidgetTaskHandler(widgetTaskHandler);
 
 // Ignore known external library warnings
 LogBox.ignoreLogs([
@@ -51,6 +62,9 @@ function RootLayoutNav() {
     requestNotificationPermissions().then(granted => {
       if (granted) scheduleDailyReminder(8, 0);
     });
+
+    // Request/ensure storage setup
+    import("@/lib/storagePermissions").then(m => m.requestStoragePermissions());
   }, []);
 
   return (
@@ -79,6 +93,7 @@ export default function RootLayout() {
     DMSans_400Regular,
     DMSans_500Medium,
     DMSans_600SemiBold,
+    DMSans_700Bold,
   });
 
   useEffect(() => {
