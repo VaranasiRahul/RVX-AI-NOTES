@@ -152,11 +152,6 @@ export default function SettingsScreen() {
         }
     };
 
-    const totalTopics = notes.reduce((acc, note) => {
-        return acc + note.content.split(/\n{3,}/).filter(s => s.trim()).length;
-    }, 0);
-
-    const ratedTopics = Object.keys(topicProgress).length;
 
     return (
         <View style={[styles.container, { paddingTop: topPad + 20, backgroundColor: Colors.background }]}>
@@ -168,24 +163,6 @@ export default function SettingsScreen() {
                     <Text style={[styles.headerTitle, { color: Colors.text }]}>Settings</Text>
                 </Animated.View>
 
-                {/* Stats overview */}
-                <Animated.View entering={FadeInDown.delay(80)} style={[styles.statsCard, { backgroundColor: Colors.card, borderColor: Colors.border }]}>
-                    {[
-                        { label: "Folders", value: folders.length, icon: "folder-outline" },
-                        { label: "Notes", value: notes.length, icon: "document-text-outline" },
-                        { label: "Topics", value: totalTopics, icon: "list-outline" },
-                        { label: "Rated", value: ratedTopics, icon: "star-outline" },
-                    ].map(({ label, value, icon }, i) => (
-                        <React.Fragment key={label}>
-                            {i > 0 && <View style={[styles.statsDivider, { backgroundColor: Colors.border }]} />}
-                            <View style={styles.statsItem}>
-                                <Ionicons name={icon as any} size={16} color={Colors.accent} />
-                                <Text style={[styles.statsValue, { color: Colors.text }]}>{value}</Text>
-                                <Text style={[styles.statsLabel, { color: Colors.textMuted }]}>{label}</Text>
-                            </View>
-                        </React.Fragment>
-                    ))}
-                </Animated.View>
 
                 {/* Theme */}
                 <Animated.View entering={FadeInDown.delay(100)}>
@@ -218,13 +195,15 @@ export default function SettingsScreen() {
 
                 {/* AI Features */}
                 <Animated.View entering={FadeInDown.delay(120)}>
-                    <SectionHeader title="AI Topic Analysis" Colors={Colors} />
+                    <SectionHeader title="AI SUMMARY" Colors={Colors} />
                     <View style={[styles.group, { backgroundColor: Colors.card, borderColor: Colors.border, borderWidth: 1, borderRadius: 16, overflow: 'hidden' }]}>
                         <View style={{ padding: 14, gap: 12 }}>
                             <View style={{ gap: 4 }}>
-                                <Text style={{ fontFamily: 'DMSans_600SemiBold', fontSize: 15, color: Colors.text }}>Set up AI Intelligence</Text>
+                                <Text style={{ fontFamily: 'DMSans_600SemiBold', fontSize: 15, color: Colors.text }}>AI Intelligence Levels</Text>
                                 <Text style={{ fontFamily: 'DMSans_400Regular', fontSize: 13, color: Colors.textMuted, lineHeight: 18 }}>
-                                    Bring your notes to life with Google's Gemini. AI automatically detects topics, creates chapters, and generates summaries.
+                                    RVX AI is powered by the Advanced Hybrid NLP Summarizer (v2.2) by default. This engine runs entirely on your device, ensuring your notes never leave your phone and requiring no internet, keys, or logins.
+                                    {"\n\n"}
+                                    For even deeper semantic analysis, you can upgrade to Pro AI Summary via Google Gemini.
                                 </Text>
                             </View>
 
@@ -264,16 +243,20 @@ export default function SettingsScreen() {
 
                             {geminiApiKey ? (
                                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                                    <Ionicons name="sparkles" size={14} color={Colors.accent} />
-                                    <Text style={{ fontFamily: 'DMSans_500Medium', fontSize: 13, color: Colors.accent }}>
-                                        AI Advanced Features Active
+                                    <View style={{ backgroundColor: Colors.accent + '20', padding: 6, borderRadius: 8 }}>
+                                        <Ionicons name="sparkles" size={14} color={Colors.accent} />
+                                    </View>
+                                    <Text style={{ fontFamily: 'DMSans_600SemiBold', fontSize: 13, color: Colors.accent }}>
+                                        Pro Intelligence Active
                                     </Text>
                                 </View>
                             ) : (
                                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                                    <Ionicons name="information-circle-outline" size={14} color={Colors.textMuted} />
-                                    <Text style={{ fontFamily: 'DMSans_400Regular', fontSize: 12, color: Colors.textMuted }}>
-                                        Without a key, notes use basic line separation
+                                    <View style={{ backgroundColor: Colors.textMuted + '15', padding: 6, borderRadius: 8 }}>
+                                        <Ionicons name="shield-checkmark" size={14} color={Colors.textMuted} />
+                                    </View>
+                                    <Text style={{ fontFamily: 'DMSans_500Medium', fontSize: 12, color: Colors.textMuted }}>
+                                        Standard On-Device Intelligence Active
                                     </Text>
                                 </View>
                             )}
@@ -382,12 +365,6 @@ const styles = StyleSheet.create({
         marginBottom: 12,
         marginLeft: 4
     },
-    // Stats
-    statsCard: { flexDirection: "row", borderRadius: 16, padding: 16, borderWidth: 1 },
-    statsItem: { flex: 1, alignItems: "center", gap: 3 },
-    statsDivider: { width: 1 },
-    statsValue: { fontFamily: "PlayfairDisplay_700Bold", fontSize: 20 },
-    statsLabel: { fontFamily: "DMSans_400Regular", fontSize: 11 },
     // Theme
     themeGrid: { flexDirection: "row", gap: 10 },
     themeCard: { flex: 1, borderRadius: 14, padding: 14, alignItems: "center", gap: 8, borderWidth: 1, position: "relative" },

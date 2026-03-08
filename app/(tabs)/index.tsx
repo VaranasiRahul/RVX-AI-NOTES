@@ -379,17 +379,50 @@ export default function TodayScreen() {
     return (
       <View style={[styles.container, { paddingTop: topPad, backgroundColor: Colors.background }]}>
         <Animated.View entering={FadeInDown.delay(200)} style={styles.emptyContainer}>
-          <Ionicons name="book-outline" size={60} color={Colors.textMuted} />
-          <Text style={[styles.emptyTitle, { color: Colors.text }]}>No notes yet</Text>
-          <Text style={[styles.emptySubtitle, { color: Colors.textSecondary }]}>
-            Head to Folders, create a folder, add a note and start writing.
+          <LivingAiIcon active={true} size={64} />
+          <Text style={[styles.emptyTitle, { color: Colors.text, marginTop: 24 }]}>Welcome to RVX AI</Text>
+          <Text style={[styles.emptySubtitle, { color: Colors.textSecondary, marginBottom: 30 }]}>
+            Your intelligent personal knowledge base. Follow these simple steps to begin:
           </Text>
+
+          <View style={styles.onboardingSteps}>
+            <View style={styles.onboardingStep}>
+              <View style={[styles.stepIcon, { backgroundColor: Colors.accent + '15' }]}>
+                <Ionicons name="folder-open" size={22} color={Colors.accent} />
+              </View>
+              <View style={styles.stepText}>
+                <Text style={[styles.stepTitle, { color: Colors.text }]}>1. Create a Folder</Text>
+                <Text style={[styles.stepDesc, { color: Colors.textSecondary }]}>Go to the Folders tab and create a category (e.g. Physics, Work, Daily).</Text>
+              </View>
+            </View>
+
+            <View style={styles.onboardingStep}>
+              <View style={[styles.stepIcon, { backgroundColor: Colors.accent + '15' }]}>
+                <Ionicons name="create" size={22} color={Colors.accent} />
+              </View>
+              <View style={styles.stepText}>
+                <Text style={[styles.stepTitle, { color: Colors.text }]}>2. Add Your Notes</Text>
+                <Text style={[styles.stepDesc, { color: Colors.textSecondary }]}>Add notes inside your folder. Use "---" to manually split topics for review.</Text>
+              </View>
+            </View>
+
+            <View style={styles.onboardingStep}>
+              <View style={[styles.stepIcon, { backgroundColor: Colors.accent + '15' }]}>
+                <Ionicons name="sparkles" size={22} color={Colors.accent} />
+              </View>
+              <View style={styles.stepText}>
+                <Text style={[styles.stepTitle, { color: Colors.text }]}>3. Review Smarter</Text>
+                <Text style={[styles.stepDesc, { color: Colors.textSecondary }]}>Your topics will appear here as cards, optimized for revision and spaced repetition.</Text>
+              </View>
+            </View>
+          </View>
+
           <TouchableOpacity
-            style={[styles.emptyButton, { backgroundColor: Colors.accent }]}
+            style={[styles.emptyButton, { backgroundColor: Colors.accent, marginTop: 10, paddingRight: 20 }]}
             onPress={() => router.push("/(tabs)/folders")}
           >
-            <Ionicons name="folder-open" size={16} color={Colors.background} />
-            <Text style={[styles.emptyButtonText, { color: Colors.background }]}>Open Folders</Text>
+            <Text style={[styles.emptyButtonText, { color: Colors.background }]}>Get Started</Text>
+            <Ionicons name="arrow-forward" size={18} color={Colors.background} style={{ marginLeft: 8 }} />
           </TouchableOpacity>
         </Animated.View>
       </View>
@@ -613,7 +646,7 @@ export default function TodayScreen() {
         snapToInterval={CARD_HEIGHT}
         snapToAlignment="start"
         decelerationRate="fast"
-        ListHeaderComponent={<View style={{ height: topPad + 60 }} />}
+        ListHeaderComponent={<View style={{ height: topPad + 62 }} />}
         // Only paginate on the All tab — folder view shows all items at once
         onEndReached={selectedFolderId === null && !isSummarizeMode ? loadMoreItems : undefined}
         onEndReachedThreshold={0.4}
@@ -798,6 +831,36 @@ const styles = StyleSheet.create({
   emptySubtitle: { fontFamily: "DMSans_400Regular", fontSize: 14, textAlign: "center", lineHeight: 22 },
   emptyButton: { flexDirection: "row", alignItems: "center", gap: 8, marginTop: 8, paddingHorizontal: 24, paddingVertical: 13, borderRadius: 30 },
   emptyButtonText: { fontFamily: "DMSans_600SemiBold", fontSize: 16 },
+  onboardingSteps: {
+    width: '100%',
+    gap: 20,
+    marginBottom: 32,
+  },
+  onboardingStep: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 16,
+  },
+  stepIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  stepText: {
+    flex: 1,
+  },
+  stepTitle: {
+    fontFamily: "DMSans_600SemiBold",
+    fontSize: 16,
+    marginBottom: 4,
+  },
+  stepDesc: {
+    fontFamily: "DMSans_400Regular",
+    fontSize: 13,
+    lineHeight: 18,
+  },
   storiesDrawerWrapper: {
     position: "absolute",
     right: -(SCREEN_WIDTH - 30),

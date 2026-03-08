@@ -14,11 +14,13 @@ const AnimatedLinearGradient = Animated.createAnimatedComponent(LinearGradient);
 
 interface LivingAiIconProps {
     active?: boolean;
+    size?: number;
 }
 
-export default function LivingAiIcon({ active = false }: LivingAiIconProps) {
+export default function LivingAiIcon({ active = false, size = 32 }: LivingAiIconProps) {
     const { colors } = useTheme();
     const rotate = useSharedValue(0);
+    const radius = size / 2;
 
     useEffect(() => {
         // Continuous rotation for the "alive" moving gradient effect
@@ -55,9 +57,9 @@ export default function LivingAiIcon({ active = false }: LivingAiIconProps) {
         <Animated.View style={[
             styles.container,
             containerStyle,
-            { shadowColor: '#D946EF' }
+            { shadowColor: '#D946EF', width: size, height: size, borderRadius: radius }
         ]}>
-            <View style={styles.maskContainer}>
+            <View style={[styles.maskContainer, { borderRadius: radius }]}>
                 <AnimatedLinearGradient
                     colors={aiColors}
                     start={{ x: 0, y: 0 }}
@@ -65,16 +67,13 @@ export default function LivingAiIcon({ active = false }: LivingAiIconProps) {
                     style={[StyleSheet.absoluteFill, gradientStyle]}
                 />
             </View>
-            <Text style={styles.text}>AI</Text>
+            <Text style={[styles.text, { fontSize: size * 0.35 }]}>AI</Text>
         </Animated.View>
     );
 }
 
 const styles = StyleSheet.create({
     container: {
-        width: 32, // Reduced size
-        height: 32, // Reduced size
-        borderRadius: 16,
         justifyContent: 'center',
         alignItems: 'center',
         shadowOffset: { width: 0, height: 4 },
@@ -82,12 +81,10 @@ const styles = StyleSheet.create({
     },
     maskContainer: {
         ...StyleSheet.absoluteFillObject,
-        borderRadius: 16,
         overflow: 'hidden',
     },
     text: {
         fontFamily: 'DMSans_700Bold',
-        fontSize: 11, // Slightly smaller text for smaller circle
         letterSpacing: 0.5,
         zIndex: 1,
         color: '#FFFFFF', // Bright white always

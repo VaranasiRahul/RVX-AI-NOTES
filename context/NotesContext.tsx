@@ -626,12 +626,6 @@ export function NotesProvider({ children }: { children: ReactNode }) {
     setNotes(updated);
     await saveToPersistentStore(STORAGE_KEYS.NOTES, updated);
 
-    if (geminiApiKey) {
-      setTimeout(() => {
-        runAiAnalysis(note.id, note.content, geminiApiKey).catch(e => console.warn('Background AI skipped/failed:', e));
-      }, 500);
-    }
-
     return note;
   }, [notes, geminiApiKey]);
 
@@ -644,13 +638,6 @@ export function NotesProvider({ children }: { children: ReactNode }) {
     setNotes(updated);
     await saveToPersistentStore(STORAGE_KEYS.NOTES, updated);
 
-    if (content.trim().length > 10) {
-      setTimeout(() => {
-        // Always regenerate with the best available local parser when content changes.
-        // If a Gemini key is present, use Gemini; otherwise fall through to async local parser.
-        runAiAnalysis(id, content, geminiApiKey).catch(e => console.warn('Background AI skipped/failed:', e));
-      }, 500);
-    }
   }, [notes, geminiApiKey]);
 
   const deleteNote = useCallback(async (id: string) => {

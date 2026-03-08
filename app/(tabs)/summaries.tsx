@@ -23,7 +23,8 @@ import * as Haptics from "expo-haptics";
 import Animated, { FadeIn, FadeInRight, FadeOutLeft, LinearTransition } from "react-native-reanimated";
 import { stripMarkdown } from "@/components/FeedCard";
 import FeedCard, { CARD_HEIGHT } from "@/components/FeedCard";
-import { router } from "expo-router";
+import { router, useNavigation } from "expo-router";
+import LivingAiIcon from "@/components/LivingAiIcon";
 import type { ParsedTopic } from "@/lib/smartTopicParser";
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -104,8 +105,17 @@ export default function SummariesScreen() {
     const { colors: Colors, theme } = useTheme();
     const { notes, folders, markedTopics, toggleTopicMark } = useNotes();
     const [viewStack, setViewStack] = useState<ViewState[]>([{ type: 'folders' }]);
+    const navigation = useNavigation();
     const topPad = Platform.OS === "web" ? 60 : insets.top;
     const SUMMARY_CARD_HEIGHT = CARD_HEIGHT - 80;
+
+    React.useEffect(() => {
+        const unsubscribe = (navigation as any).addListener('tabPress', (e: any) => {
+            // Reset to folders view when the tab is tapped
+            setViewStack([{ type: 'folders' }]);
+        });
+        return unsubscribe;
+    }, [navigation]);
 
     const currentView = viewStack[viewStack.length - 1];
 
@@ -189,9 +199,14 @@ export default function SummariesScreen() {
             )}
             ListEmptyComponent={
                 <View style={styles.emptyContainer}>
-                    <Ionicons name="folder-open-outline" size={48} color={Colors.textMuted} />
-                    <Text style={[styles.emptyText, { color: Colors.textMuted }]}>No folders yet.</Text>
-                    <Text style={[styles.emptySubText, { color: Colors.textMuted }]}>Create a folder and add notes to see summaries here.</Text>
+                    <LivingAiIcon active={false} size={60} />
+                    <Text style={[styles.emptyText, { color: Colors.text, marginTop: 20 }]}>Summary Hub</Text>
+                    <Text style={[styles.emptySubText, { color: Colors.textSecondary, textAlign: 'center' }]}>
+                        This is where your notes are distilled into
+                        smart, bite-sized topic blocks.
+                        {"\n\n"}
+                        Go to Folders and add your first note to unlock AI summaries.
+                    </Text>
                 </View>
             }
         />
@@ -320,7 +335,7 @@ export default function SummariesScreen() {
 
     return (
         <View style={[styles.container, { backgroundColor: Colors.background }]}>
-            <Animated.View entering={FadeIn.duration(400)} style={[styles.header, { paddingTop: topPad + 28 }]}>
+            <Animated.View entering={FadeIn.duration(400)} style={[styles.header, { paddingTop: topPad + 30 }]}>
                 <View style={styles.headerRow}>
                     {viewStack.length > 1 ? (
                         <TouchableOpacity onPress={handleBack} style={styles.backButton}>

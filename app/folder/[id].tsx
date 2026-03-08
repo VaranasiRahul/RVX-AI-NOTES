@@ -51,7 +51,7 @@ function RenameNoteModal({ visible, currentName, onClose, onRename, Colors }: {
         <KeyboardAvoidingView
           behavior={Platform.OS === "ios" ? "padding" : "height"}
           style={styles.modalKAV}
-          keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 40}
+          keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 80}
         >
           <Pressable>
             <View style={[styles.modalSheet, { backgroundColor: Colors.surface, paddingBottom: insets.bottom + 20 }]}>
@@ -170,7 +170,7 @@ function CreateNoteModal({ visible, onClose, onCreate, Colors }: {
         <KeyboardAvoidingView
           behavior={Platform.OS === "ios" ? "padding" : "height"}
           style={styles.modalKAV}
-          keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 40}
+          keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 80}
         >
           <Pressable>
             <View style={[styles.modalSheet, { backgroundColor: Colors.surface, paddingBottom: insets.bottom + 20 }]}>

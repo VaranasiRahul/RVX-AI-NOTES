@@ -10,6 +10,7 @@ import {
     KeyboardAvoidingView,
     ActivityIndicator,
 } from "react-native";
+import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { router, useLocalSearchParams } from "expo-router";
 import Animated, { FadeIn, FadeInDown } from "react-native-reanimated";
@@ -99,12 +100,9 @@ export default function NoteEditorScreen() {
         setMode("topics");
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
 
-        // Auto-generate AI summaries in the background when closing the editor
-        if (geminiApiKey && content.trim().length > 10) {
-            setTimeout(() => {
-                runAiAnalysis(id!, content, geminiApiKey).catch(e => console.warn('Background AI skipped/failed:', e));
-            }, 500);
-        }
+        import('@/lib/topicCache').then(({ clearCachedTopics }) => {
+            clearCachedTopics(id!); // Clear any AI cache so manual edits take priority
+        });
     };
 
     const handleAnalyzeWithAI = async () => {
@@ -188,9 +186,6 @@ export default function NoteEditorScreen() {
                     onPress={() => {
                         if (!isSaved) {
                             updateNote(id!, title, content);
-                            if (geminiApiKey && content.trim().length > 10) {
-                                setTimeout(() => runAiAnalysis(id!, content, geminiApiKey).catch(() => { }), 500);
-                            }
                         }
                         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
                         router.back();
@@ -295,13 +290,12 @@ export default function NoteEditorScreen() {
                 </View>
             )}
 
-            <ScrollView
+            <KeyboardAwareScrollView
                 style={styles.scroll}
                 contentContainerStyle={[styles.scrollContent, { paddingBottom: Platform.OS === "web" ? 60 : 150 + insets.bottom }]}
                 keyboardDismissMode="none"
                 showsVerticalScrollIndicator={false}
-                removeClippedSubviews={false}
-                nestedScrollEnabled={true}
+                bottomOffset={80} // Push content up when keyboard opens
             >
                 {mode === "edit" ? (
                     <Animated.View entering={FadeIn.duration(200)}>
@@ -426,7 +420,7 @@ export default function NoteEditorScreen() {
                         )}
                     </Animated.View>
                 )}
-            </ScrollView>
+            </KeyboardAwareScrollView>
         </KeyboardAvoidingView>
     );
 }

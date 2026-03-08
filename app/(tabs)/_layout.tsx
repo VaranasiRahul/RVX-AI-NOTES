@@ -18,6 +18,10 @@ function NativeTabLayout() {
         <Icon sf={{ default: "sparkles", selected: "sparkles" }} />
         <Label>Today</Label>
       </NativeTabs.Trigger>
+      <NativeTabs.Trigger name="summaries">
+        <Icon sf={{ default: "list.bullet", selected: "list.bullet" }} />
+        <Label>Summaries</Label>
+      </NativeTabs.Trigger>
       <NativeTabs.Trigger name="folders">
         <Icon sf={{ default: "folder", selected: "folder.fill" }} />
         <Label>Folders</Label>
@@ -25,10 +29,6 @@ function NativeTabLayout() {
       <NativeTabs.Trigger name="streak">
         <Icon sf={{ default: "flame", selected: "flame.fill" }} />
         <Label>Streak</Label>
-      </NativeTabs.Trigger>
-      <NativeTabs.Trigger name="summaries">
-        <Icon sf={{ default: "list.bullet", selected: "list.bullet" }} />
-        <Label>Summaries</Label>
       </NativeTabs.Trigger>
       <NativeTabs.Trigger name="settings">
         <Icon sf={{ default: "gearshape", selected: "gearshape.fill" }} />
@@ -160,9 +160,9 @@ function ClassicTabLayout() {
       }}
     >
       <Tabs.Screen name="index" />
+      <Tabs.Screen name="summaries" />
       <Tabs.Screen name="folders" />
       <Tabs.Screen name="streak" />
-      <Tabs.Screen name="summaries" />
       <Tabs.Screen name="settings" />
     </Tabs>
   );
