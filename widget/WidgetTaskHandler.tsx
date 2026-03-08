@@ -137,23 +137,57 @@ async function getNextMarkedBlock(): Promise<WidgetData | null> {
         };
 
         const paragraphs = segmentIntoParagraphs(raw);
-        // We will just do a simplified group since we need basic functionality for the widget without all imports
-        // Replicate basic logic for boundaries to get blocks:
-        let blocks: string[] = [];
-        let curBlock: string[] = [];
+        const TOPIC_TRANSITIONS = [
+            /^(now|next|moving on|let'?s? (now|look|turn|consider|discuss|explore))/i,
+            /^(in contrast|on the other hand|however|conversely|alternatively)/i,
+            /^(another (approach|method|way|type|example|key|important))/i,
+            /^(the (second|third|fourth|fifth|next|final|last|following))/i,
+            /^(chapter|section|part|topic|step|phase|stage)\s+\d+/i,
+            /^(introduction|conclusion|summary|overview|background|motivation)/i,
+            /^(definition|theorem|lemma|proof|algorithm|example|exercise|problem)/i,
+            /^(key (concept|idea|point|takeaway|term|principle|fact))/i,
+        ];
 
-        for (let i = 0; i < paragraphs.length; i++) {
-            const p = paragraphs[i];
-            const firstLine = p.split('\n')[0].trim();
+        const contentWords = (text: string): Set<string> => {
+            const STOP = new Set(['a', 'an', 'the', 'and', 'or', 'but', 'if', 'in', 'on', 'at', 'to', 'for', 'of', 'with', 'by', 'from', 'is', 'are', 'was', 'were', 'be', 'been', 'being', 'have', 'has', 'had', 'do', 'this', 'that', 'it', 'what', 'which', 'who', 'how']);
+            return new Set(text.toLowerCase().replace(/[^a-z0-9\s]/g, ' ').split(/\s+/).filter(w => w.length > 3 && !STOP.has(w)));
+        };
 
-            if (i > 0 && isLineBoundary(firstLine)) {
-                blocks.push(curBlock.join('\n\n'));
-                curBlock = [p];
-            } else {
-                curBlock.push(p);
+        const jaccardSimilarity = (a: Set<string>, b: Set<string>): number => {
+            if (a.size === 0 && b.size === 0) return 1;
+            if (a.size === 0 || b.size === 0) return 0;
+            let intersection = 0;
+            for (const w of a) if (b.has(w)) intersection++;
+            return intersection / (a.size + b.size - intersection);
+        };
+
+        // REPLICATE detectBoundaries logic (Phase 2)
+        const boundaries = new Set<number>([0]);
+        for (let i = 1; i < paragraphs.length; i++) {
+            const cur = paragraphs[i];
+            const prev = paragraphs[i - 1];
+            const firstLine = cur.split('\n')[0].trim();
+            const firstLineLower = firstLine.toLowerCase();
+
+            if (isLineBoundary(firstLine)) { boundaries.add(i); continue; }
+            if (TOPIC_TRANSITIONS.some(r => r.test(firstLineLower))) { boundaries.add(i); continue; }
+
+            // Semantic check
+            const prevSet = contentWords(prev);
+            const curSet = contentWords(cur);
+            if (prevSet.size >= 4 && curSet.size >= 4) {
+                if (jaccardSimilarity(prevSet, curSet) < 0.08) boundaries.add(i);
             }
         }
-        if (curBlock.length > 0) blocks.push(curBlock.join('\n\n'));
+
+        const sorted = [...boundaries].sort((a, b) => a - b);
+        let blocks: string[] = [];
+        for (let b = 0; b < sorted.length; b++) {
+            const start = sorted[b];
+            const end = sorted[b + 1] ?? paragraphs.length;
+            const group = paragraphs.slice(start, end);
+            if (group.length > 0) blocks.push(group.join('\n\n').trim());
+        }
 
         // Smart merge
         const MIN_BLOCK_WORDS = 40;
@@ -170,11 +204,7 @@ async function getNextMarkedBlock(): Promise<WidgetData | null> {
         }
 
         const finalBlocks = result.length > 0 ? result : [raw.trim()];
-
-        // If the array is still empty (edge case)
-        if (finalBlocks.length === 0 && index === 0) return { title: extractTitle(raw), body: raw.trim() };
         if (!finalBlocks[index]) return null;
-
         return { title: extractTitle(finalBlocks[index]), body: finalBlocks[index] };
     };
 
