@@ -110,7 +110,11 @@ export default function StoryScreen() {
         if (currentIndex < topics.length - 1) {
             setCurrentIndex((prev) => prev + 1);
         } else {
-            router.back();
+            if (router.canGoBack()) {
+                router.back();
+            } else {
+                router.replace("/(tabs)");
+            }
         }
     };
 
@@ -272,7 +276,13 @@ export default function StoryScreen() {
                             <Text style={styles.timeText}>{folder.name}</Text>
                         </View>
                         <TouchableOpacity
-                            onPress={() => router.back()}
+                            onPress={() => {
+                                if (router.canGoBack()) {
+                                    router.back();
+                                } else {
+                                    router.replace("/(tabs)");
+                                }
+                            }}
                             style={{ padding: 4 }}
                         >
                             <Ionicons name="close" size={28} color="#fff" />

@@ -188,7 +188,11 @@ export default function NoteEditorScreen() {
                             updateNote(id!, title, content);
                         }
                         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                        router.back();
+                        if (router.canGoBack()) {
+                            router.back();
+                        } else {
+                            router.replace("/(tabs)");
+                        }
                     }}
                     style={styles.backButton}
                 >

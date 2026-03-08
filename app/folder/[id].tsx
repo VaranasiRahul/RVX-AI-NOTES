@@ -239,7 +239,14 @@ export default function FolderDetailScreen() {
     <View style={[styles.container, { paddingTop: topPad, backgroundColor: Colors.background }]}>
       <Animated.View entering={FadeIn.duration(300)} style={styles.header}>
         <TouchableOpacity
-          onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); router.back(); }}
+          onPress={() => {
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+            if (router.canGoBack()) {
+              router.back();
+            } else {
+              router.replace("/(tabs)");
+            }
+          }}
           style={styles.backButton}
         >
           <Ionicons name="chevron-back" size={22} color={Colors.text} />

@@ -67,7 +67,13 @@ export default function TopicDetailScreen() {
   if (!topic || !note) {
     return (
       <View style={[styles.container, { paddingTop: topPad, backgroundColor: Colors.background }]}>
-        <TouchableOpacity style={styles.closeButton} onPress={() => router.back()}>
+        <TouchableOpacity style={styles.closeButton} onPress={() => {
+          if (router.canGoBack()) {
+            router.back();
+          } else {
+            router.replace("/(tabs)");
+          }
+        }}>
           <Ionicons name="chevron-back" size={22} color={Colors.text} />
         </TouchableOpacity>
         <Text style={[styles.errorText, { color: Colors.error }]}>Topic not found</Text>
@@ -147,7 +153,14 @@ export default function TopicDetailScreen() {
     <View style={[styles.container, { paddingTop: topPad, backgroundColor: Colors.background }]}>
       {/* Header */}
       <Animated.View entering={FadeIn.duration(300)} style={[styles.header, { borderBottomColor: Colors.border }]}>
-        <TouchableOpacity style={styles.closeButton} onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); router.back(); }}>
+        <TouchableOpacity style={styles.closeButton} onPress={() => {
+          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+          if (router.canGoBack()) {
+            router.back();
+          } else {
+            router.replace("/(tabs)");
+          }
+        }}>
           <Ionicons name="close" size={22} color={Colors.text} />
         </TouchableOpacity>
         <View style={styles.headerCenter}>
