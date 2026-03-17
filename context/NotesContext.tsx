@@ -77,6 +77,7 @@ const STORAGE_KEYS = {
   THEME: 'reviseit_theme',
   GEMINI_KEY: 'reviseit_gemini_key',
   MARKED: 'reviseit_marked_topics',
+  HAPTICS_ENABLED: 'reviseit_haptics_enabled',
 };
 
 function getTodayString(): string {
@@ -367,6 +368,8 @@ interface NotesContextValue {
   clearAICache: (noteId?: string) => Promise<void>;
   markedTopics: Record<string, boolean>;
   toggleTopicMark: (noteId: string, topicIndex: number) => Promise<void>;
+  hapticsEnabled: boolean;
+  setHapticsEnabled: (enabled: boolean) => Promise<void>;
 }
 
 const DEFAULT_STREAK: StreakData = {
@@ -388,6 +391,7 @@ export function NotesProvider({ children }: { children: ReactNode }) {
   const [isLoading, setIsLoading] = useState(true);
   const [geminiApiKey, setGeminiApiKeyState] = useState<string>('');
   const [markedTopics, setMarkedTopics] = useState<Record<string, boolean>>({});
+  const [hapticsEnabled, setHapticsEnabledState] = useState(true);
 
   useEffect(() => {
     WidgetManager.updateStreak(streak.currentStreak);
@@ -417,7 +421,7 @@ export function NotesProvider({ children }: { children: ReactNode }) {
 
   async function loadAllData() {
     try {
-      const [foldersJson, notesJson, streakJson, dailyJson, srJson, geminiKey, markedJson] = await Promise.all([
+      const [foldersJson, notesJson, streakJson, dailyJson, srJson, geminiKey, markedJson, hapticsJson] = await Promise.all([
         loadFromPersistentStore<Folder[]>(STORAGE_KEYS.FOLDERS, []),
         loadFromPersistentStore<Note[]>(STORAGE_KEYS.NOTES, []),
         loadFromPersistentStore<StreakData | null>(STORAGE_KEYS.STREAK, null),
@@ -425,9 +429,11 @@ export function NotesProvider({ children }: { children: ReactNode }) {
         loadFromPersistentStore<Record<string, TopicProgress>>(STORAGE_KEYS.SR, {}),
         loadFromPersistentStore<string>(STORAGE_KEYS.GEMINI_KEY, ''),
         loadFromPersistentStore<Record<string, boolean>>(STORAGE_KEYS.MARKED, {}),
+        loadFromPersistentStore<boolean>(STORAGE_KEYS.HAPTICS_ENABLED, true),
       ]);
 
       if (geminiKey) setGeminiApiKeyState(geminiKey);
+      setHapticsEnabledState(hapticsJson !== false);
       const loadedFolders: Folder[] = foldersJson;
       const loadedNotes: Note[] = (notesJson || []).map(n => ({ tags: [], ...n }));
       const loadedStreak: StreakData = {
@@ -690,6 +696,11 @@ export function NotesProvider({ children }: { children: ReactNode }) {
     await saveToPersistentStore(STORAGE_KEYS.GEMINI_KEY, trimmed);
   }, []);
 
+  const setHapticsEnabled = useCallback(async (enabled: boolean) => {
+    setHapticsEnabledState(enabled);
+    await saveToPersistentStore(STORAGE_KEYS.HAPTICS_ENABLED, enabled);
+  }, []);
+
   const analyzeNoteWithAI = useCallback(async (
     noteId: string,
     content: string,
@@ -744,7 +755,9 @@ export function NotesProvider({ children }: { children: ReactNode }) {
     clearAICache,
     markedTopics,
     toggleTopicMark,
-  }), [folders, notes, streak, dailyTopic, topicProgress, isLoading, createFolder, updateFolder, deleteFolder, createNote, updateNote, deleteNote, getNotesByFolder, rollDailyTopic, markRevised, getDailyTopicData, rateTopic, getTopicProgress, exportData, importData, geminiApiKey, setGeminiApiKey, analyzeNoteWithAI, clearAICache, markedTopics, toggleTopicMark]);
+    hapticsEnabled,
+    setHapticsEnabled,
+  }), [folders, notes, streak, dailyTopic, topicProgress, isLoading, createFolder, updateFolder, deleteFolder, createNote, updateNote, deleteNote, getNotesByFolder, rollDailyTopic, markRevised, getDailyTopicData, rateTopic, getTopicProgress, exportData, importData, geminiApiKey, setGeminiApiKey, analyzeNoteWithAI, clearAICache, markedTopics, toggleTopicMark, hapticsEnabled, setHapticsEnabled]);
 
   return <NotesContext.Provider value={value}>{children}</NotesContext.Provider>;
 }

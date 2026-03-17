@@ -4,7 +4,7 @@
  * Unauthorized copying, distribution, or use is strictly prohibited.
  * See LICENSE file in the root directory for full terms.
  */
-import React, { useState, useRef } from "react";
+import React, { useState } from "react";
 import {
     View,
     Text,
@@ -13,20 +13,22 @@ import {
     Dimensions,
     Platform,
     FlatList,
+    ScrollView // added to support scrolling text content if it overflows
 } from "react-native";
 import { BlurView } from "expo-blur";
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import * as Haptics from "expo-haptics";
 import Animated, { FadeIn, FadeOut, LinearTransition } from "react-native-reanimated";
+import Markdown from "react-native-markdown-display";
 import { useNotes, getTopicKey } from "@/context/NotesContext";
 import { useTheme } from "@/context/ThemeContext";
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get("window");
 
 // This height calculation matches the vertical snap interval of the Home Feed
-const HEADER_HEIGHT = Platform.OS === "web" ? 67 : 50;
-const TAB_BAR_HEIGHT = 120;
+const HEADER_HEIGHT = Platform.OS === "web" ? 67 : 62; // updated to match actual navbar height closer
+const TAB_BAR_HEIGHT = Platform.OS === "android" ? 110 : 120; // 56 (tab bar) + bottom padding (approx 54)
 export const CARD_HEIGHT = SCREEN_HEIGHT - HEADER_HEIGHT - TAB_BAR_HEIGHT;
 
 export interface FeedItem {
@@ -51,7 +53,12 @@ export function stripMarkdown(text: string): string {
         .replace(/(\*\*|__)(.*?)\1/g, "$2")
         .replace(/(\*|_)(.*?)\1/g, "$2")
         .replace(/\[(.*?)\]\(.*?\)/g, "$1")
-        .replace(/`{1,3}(.*?)`{1,3}/g, "$1")
+        .replace(/`{1,3}([^`]*?)`{1,3}/g, "$1") // Better logic for code blocks
+        .replace(/!\[.*?\]\(.*?\)/g, "") // remove images entirely
+        .replace(/>\s*/g, "") // blockquotes
+        .replace(/[-*+]\s+/g, "") // Lists
+        .replace(/\d+\.\s+/g, "") // numbered lists
+        .replace(/---/g, "") // Horizontal Rules
         .replace(/\n{2,}/g, "\n")
         .trim();
 }
@@ -77,34 +84,62 @@ const FeedCard = React.memo(function FeedCard({
     cardHeight?: number | 'auto';
     isGlass?: boolean;
 }) {
-    const plainText = stripMarkdown(item.bodyRaw).trim();
+    const rawText = item.bodyRaw.trim();
 
     // Adjust chunkSize based on available vertical space.
     // At fontSize 17, lineHeight 26, a 500-character chunk is a safe limit for a partial-height card to allow for footer/dots.
     const chunks: string[] = [];
     const chunkSize = typeof cardHeight === 'number' && cardHeight < CARD_HEIGHT ? 520 : 800;
-    if (plainText.length <= chunkSize) {
-        chunks.push(plainText);
+    
+    // Fallback if we need to split down the text, avoiding to break markdown codeblocks. 
+    // Usually it's better to preserve blocks exactly but for display text we attempt naive split:
+    if (rawText.length <= chunkSize) {
+        chunks.push(rawText);
     } else {
         let currentIdx = 0;
-        while (currentIdx < plainText.length) {
+        while (currentIdx < rawText.length) {
             // Find a space near the chunk boundary to keep words intact
             let nextIdx = currentIdx + chunkSize;
-            if (nextIdx < plainText.length) {
-                const spaceIdx = plainText.lastIndexOf(" ", nextIdx);
+            if (nextIdx < rawText.length) {
+                const spaceIdx = rawText.lastIndexOf(" ", nextIdx);
                 // Only backtrack if the space is not too far back (within 80 chars)
                 if (spaceIdx > currentIdx + (chunkSize - 100)) {
                     nextIdx = spaceIdx;
                 }
             }
-            chunks.push(plainText.slice(currentIdx, nextIdx).trim());
+            chunks.push(rawText.slice(currentIdx, nextIdx).trim());
             currentIdx = nextIdx + 1;
         }
     }
 
     const [activeIndex, setActiveIndex] = useState(0);
 
-    const cardTextColor = isGlass ? "#FFFFFF" : Colors.textSecondary;
+    const markdownStyles = StyleSheet.create({
+        body: { fontFamily: "DMSans_400Regular", fontSize: 17, color: isGlass ? "#FFFFFF" : Colors.textSecondary, lineHeight: 26, backgroundColor: "transparent" },
+        heading1: { fontFamily: "PlayfairDisplay_700Bold", fontSize: 20, color: isGlass ? "#FFFFFF" : Colors.text, marginTop: 16, marginBottom: 8, lineHeight: 28 },
+        heading2: { fontFamily: "PlayfairDisplay_700Bold", fontSize: 18, color: isGlass ? "#FFFFFF" : Colors.text, marginTop: 14, marginBottom: 6, lineHeight: 26 },
+        heading3: { fontFamily: "PlayfairDisplay_600SemiBold", fontSize: 16, color: isGlass ? "#FFFFFF" : Colors.text, marginTop: 12, marginBottom: 4, lineHeight: 24 },
+        heading4: { fontFamily: "DMSans_600SemiBold", fontSize: 15, color: isGlass ? "#FFFFFF" : Colors.text, marginTop: 10, marginBottom: 2 },
+        paragraph: { fontFamily: "DMSans_400Regular", fontSize: 17, color: isGlass ? "#FFFFFF" : Colors.textSecondary, lineHeight: 26, marginBottom: 8 },
+        strong: { fontFamily: "DMSans_600SemiBold", color: isGlass ? "#FFFFFF" : Colors.text },
+        em: { fontStyle: "italic", color: isGlass ? "#FFFFFF" : Colors.textSecondary },
+        s: { textDecorationLine: "line-through", color: Colors.textMuted },
+        code_inline: { fontFamily: Platform.select({ ios: "Menlo", android: "monospace", default: "monospace" }), fontSize: 14, backgroundColor: Colors.surfaceElevated, color: Colors.accentLight, paddingHorizontal: 4, paddingVertical: 2, borderRadius: 4 },
+        fence: { fontFamily: Platform.select({ ios: "Menlo", android: "monospace", default: "monospace" }), fontSize: 13, backgroundColor: Colors.surfaceElevated, color: Colors.accentLight, padding: 12, borderRadius: 8, borderLeftWidth: 3, borderLeftColor: Colors.accent, marginVertical: 8, lineHeight: 18 },
+        blockquote: { backgroundColor: Colors.accent + "10", borderLeftWidth: 3, borderLeftColor: Colors.accent, paddingLeft: 12, paddingVertical: 6, marginVertical: 8, borderRadius: 4 },
+        bullet_list: { marginBottom: 8 },
+        ordered_list: { marginBottom: 8 },
+        list_item: { flexDirection: "row", alignItems: "flex-start", marginBottom: 4 },
+        bullet_list_icon: { marginRight: 8, marginTop: 8, width: 5, height: 5, borderRadius: 2.5, backgroundColor: Colors.accent },
+        ordered_list_icon: { fontFamily: "DMSans_600SemiBold", fontSize: 14, color: Colors.accent, marginRight: 8, minWidth: 16 },
+        hr: { backgroundColor: Colors.border, height: 1, marginVertical: 12 },
+        link: { color: Colors.accent, textDecorationLine: "underline" },
+        table: { borderWidth: 1, borderColor: Colors.border, borderRadius: 6, marginVertical: 8, overflow: "hidden" },
+        thead: { backgroundColor: Colors.surfaceElevated },
+        th: { fontFamily: "DMSans_600SemiBold", fontSize: 13, color: isGlass ? "#FFFFFF" : Colors.text, padding: 8, borderRightWidth: 1, borderRightColor: Colors.border },
+        tr: { borderBottomWidth: 1, borderBottomColor: Colors.border, flexDirection: "row" },
+        td: { fontFamily: "DMSans_400Regular", fontSize: 13, color: isGlass ? "#FFFFFF" : Colors.textSecondary, padding: 8, borderRightWidth: 1, borderRightColor: Colors.border, flex: 1 },
+    });
 
     const cardStyle = [
         styles.card,
@@ -152,7 +187,7 @@ const FeedCard = React.memo(function FeedCard({
                     {item.isDailyPick && (
                         <View style={[styles.pickBadge, { backgroundColor: Colors.streak + "22", borderColor: Colors.streak + "44" }]}>
                             <Ionicons name="sparkles" size={10} color={Colors.streak} />
-                            <Text style={[styles.pickBadgeText, { color: Colors.streak }]}>TODAY'S PICK</Text>
+                            <Text style={[styles.pickBadgeText, { color: Colors.streak }]}>TODAY&apos;S PICK</Text>
                         </View>
                     )}
                     <View style={styles.cardActionsContainer}>
@@ -188,15 +223,10 @@ const FeedCard = React.memo(function FeedCard({
                     <View style={styles.titleRow}>
                         {item.lastRating === 'hard' && <View style={[styles.priorityDot, { backgroundColor: Colors.error }]} />}
                         {item.lastRating === 'easy' && <View style={[styles.priorityDot, { backgroundColor: Colors.success }]} />}
-                        <Text
-                            style={[
-                                styles.cardTitle,
-                                { color: isGlass ? "#FFFFFF" : Colors.text, flex: 1 }
-                            ]}
-                            numberOfLines={4}
-                        >
-                            {stripMarkdown(item.title)}
-                        </Text>
+                        <Markdown style={{
+                            body: { padding: 0, margin: 0 },
+                            paragraph: [styles.cardTitle, { color: isGlass ? "#FFFFFF" : Colors.text, flex: 1, padding: 0, margin: 0 }]
+                        } as any}>{item.title}</Markdown>
                     </View>
                 </Animated.View>
             </TouchableOpacity>
@@ -222,11 +252,11 @@ const FeedCard = React.memo(function FeedCard({
                     }}
                     renderItem={({ item: chunkText }) => (
                         <View style={styles.carouselSlide}>
-                            <Text
-                                style={[styles.cardPreview, { color: cardTextColor }]}
-                            >
-                                {chunkText}
-                            </Text>
+                            <ScrollView nestedScrollEnabled showsVerticalScrollIndicator={false}>
+                                <Markdown style={markdownStyles as any}>
+                                    {chunkText}
+                                </Markdown>
+                            </ScrollView>
                         </View>
                     )}
                 />
@@ -345,8 +375,9 @@ const styles = StyleSheet.create({
     cardContainer: {
         width: SCREEN_WIDTH,
         paddingHorizontal: 16,
-        paddingVertical: 12, // vertical padding instead of padding bottom to center it
+        paddingVertical: 12, 
         justifyContent: "center",
+        // marginTop: "-1%", // removed to perfectly center organically
     },
     card: {
         flex: 1,
@@ -422,7 +453,7 @@ const styles = StyleSheet.create({
     carouselSlide: {
         width: SCREEN_WIDTH - 80, // inner width of the card
         paddingRight: 10,
-        paddingBottom: 32, // Enforced one-line gap above interactive elements
+        paddingBottom: 20, // Revert trimming to avoid chopping bottom line
     },
     cardPreview: {
         fontFamily: "DMSans_400Regular",

@@ -73,7 +73,7 @@ function SettingsRow({ icon, label, subtitle, onPress, rightElement, Colors, dan
 
 export default function SettingsScreen() {
     const insets = useSafeAreaInsets();
-    const { exportData, importData, notes, folders, streak, topicProgress, geminiApiKey, setGeminiApiKey } = useNotes();
+    const { exportData, importData, notes, folders, streak, topicProgress, geminiApiKey, setGeminiApiKey, hapticsEnabled, setHapticsEnabled } = useNotes();
     const { colors: Colors, theme, setTheme, themeLabels, themeNames } = useTheme();
     const [notificationsEnabled, setNotificationsEnabled] = useState(false);
     const [geminiKeyInput, setGeminiKeyInput] = useState(geminiApiKey);
@@ -137,7 +137,7 @@ export default function SettingsScreen() {
     };
 
     const handleNotificationToggle = async (value: boolean) => {
-        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+        if (hapticsEnabled) Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
         if (value) {
             const granted = await requestNotificationPermissions();
             if (granted) {
@@ -266,7 +266,7 @@ export default function SettingsScreen() {
 
                 {/* Notifications */}
                 <Animated.View entering={FadeInDown.delay(140)}>
-                    <SectionHeader title="Notifications" Colors={Colors} />
+                    <SectionHeader title="Notifications & Haptics" Colors={Colors} />
                     <View style={styles.group}>
                         <SettingsRow
                             icon="notifications-outline"
@@ -279,6 +279,23 @@ export default function SettingsScreen() {
                                     onValueChange={handleNotificationToggle}
                                     trackColor={{ false: Colors.border, true: Colors.accent + "88" }}
                                     thumbColor={notificationsEnabled ? Colors.accent : Colors.textMuted}
+                                />
+                            }
+                        />
+                        <SettingsRow
+                            icon="hardware-chip-outline"
+                            label="Haptic Feedback"
+                            subtitle="Enable vibration on interactions"
+                            Colors={Colors}
+                            rightElement={
+                                <Switch
+                                    value={hapticsEnabled}
+                                    onValueChange={(val) => {
+                                        setHapticsEnabled(val);
+                                        if (val) Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                                    }}
+                                    trackColor={{ false: Colors.border, true: Colors.accent + "88" }}
+                                    thumbColor={hapticsEnabled ? Colors.accent : Colors.textMuted}
                                 />
                             }
                         />

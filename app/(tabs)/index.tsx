@@ -402,7 +402,7 @@ export default function TodayScreen() {
               </View>
               <View style={styles.stepText}>
                 <Text style={[styles.stepTitle, { color: Colors.text }]}>2. Add Your Notes</Text>
-                <Text style={[styles.stepDesc, { color: Colors.textSecondary }]}>Add notes inside your folder. Use "---" to manually split topics for review.</Text>
+                <Text style={[styles.stepDesc, { color: Colors.textSecondary }]}>Add notes inside your folder. Use &quot;---&quot; to manually split topics for review.</Text>
               </View>
             </View>
 
