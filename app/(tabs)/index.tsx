@@ -19,7 +19,7 @@ import { useScrollToTop } from "@react-navigation/native";
 
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
 import { router } from "expo-router";
-import Animated, { FadeInDown, LinearTransition } from "react-native-reanimated";
+import Animated, { FadeInDown, FadeIn, FadeOut, LinearTransition } from "react-native-reanimated";
 import * as Haptics from "expo-haptics";
 import { Ionicons } from "@expo/vector-icons";
 import { BlurView } from "expo-blur";
@@ -429,25 +429,50 @@ export default function TodayScreen() {
     );
   }
 
+  // Loading skeleton when switching modes or initial load of data
+  if (displayedItems.length === 0 && allTopics.length > 0 && isSummarizeMode) {
+    return (
+      <View style={[styles.container, { paddingTop: topPad, backgroundColor: Colors.background, paddingHorizontal: 16 }]}>
+        <View style={{ height: 100 }} />
+        <Animated.View entering={FadeIn.duration(400)} exiting={FadeOut.duration(300)} style={{ gap: 20 }}>
+           {[1, 2, 3].map(i => (
+             <View key={i} style={[styles.card, { backgroundColor: Colors.card, opacity: 1 - (i * 0.2), height: 300, borderWidth: 1, borderColor: Colors.border }]} />
+           ))}
+        </Animated.View>
+      </View>
+    );
+  }
+
   return (
     <View style={[styles.container, { backgroundColor: Colors.background }]}>
+      {/* AI sync pill — floating top-right */}
       {isAiSyncing && (
         <Animated.View
-          entering={FadeInDown}
+          entering={FadeInDown.springify()}
           style={{
-            backgroundColor: Colors.card,
-            borderBottomWidth: 1,
-            borderBottomColor: Colors.border,
-            paddingVertical: 10,
+            position: 'absolute',
+            top: topPad + 56,
+            right: 20,
+            zIndex: 20,
             flexDirection: 'row',
-            justifyContent: 'center',
             alignItems: 'center',
-            zIndex: 10,
+            gap: 6,
+            backgroundColor: Colors.card,
+            paddingHorizontal: 12,
+            paddingVertical: 7,
+            borderRadius: 20,
+            borderWidth: 1,
+            borderColor: Colors.accent + '30',
+            shadowColor: '#000',
+            shadowOffset: { width: 0, height: 4 },
+            shadowOpacity: 0.2,
+            shadowRadius: 8,
+            elevation: 6,
           }}
         >
-          <ActivityIndicator color={Colors.accent} size="small" style={{ marginRight: 10 }} />
-          <Text style={{ color: Colors.textSecondary, fontFamily: "DMSans_400Regular", fontSize: 13 }}>
-            AI is summarizing recent notes...
+          <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: Colors.accent }} />
+          <Text style={{ color: Colors.textSecondary, fontFamily: "DMSans_500Medium", fontSize: 12 }}>
+            AI syncing…
           </Text>
         </Animated.View>
       )}
@@ -557,19 +582,21 @@ export default function TodayScreen() {
                   onPress={() => {
                     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
                     setSelectedFolderId(null);
-                    scrollToTab("all");
+                    scrollToTab('all');
                   }}
                   onLayout={(e) => {
                     const { x, width } = e.nativeEvent.layout;
                     setTabLayouts(prev => ({ ...prev, all: { x, width } }));
                   }}
                 >
-                  <Text style={[
-                    styles.folderTabText,
-                    selectedFolderId === null ? styles.folderTabTextActive : { color: Colors.textMuted }
-                  ]}>
-                    All
-                  </Text>
+                  <View style={styles.tabInner}>
+                    <Text style={[
+                      styles.folderTabText,
+                      selectedFolderId === null ? styles.folderTabTextActive : { color: Colors.textMuted }
+                    ]}>
+                      All
+                    </Text>
+                  </View>
                 </TouchableOpacity>
 
                 {/* Folder Tabs */}
@@ -591,12 +618,14 @@ export default function TodayScreen() {
                         setTabLayouts(prev => ({ ...prev, [folder.id]: { x, width } }));
                       }}
                     >
-                      <Text style={[
-                        styles.folderTabText,
-                        isActive ? styles.folderTabTextActive : { color: Colors.textMuted }
-                      ]}>
-                        {folder.name}
-                      </Text>
+                      <View style={styles.tabInner}>
+                        <Text style={[
+                          styles.folderTabText,
+                          isActive ? styles.folderTabTextActive : { color: Colors.textMuted }
+                        ]}>
+                          {folder.name}
+                        </Text>
+                      </View>
                     </TouchableOpacity>
                   );
                 })}
@@ -667,16 +696,18 @@ export default function TodayScreen() {
           <FooterLoader loading={selectedFolderId === null && !isSummarizeMode && loadingMore} Colors={Colors} />
         }
         renderItem={({ item, index }) => (
-          <FeedCard
-            item={item}
-            index={index}
-            Colors={Colors}
-            theme={theme}
-            isMarked={!!markedTopics[getTopicKey(item.noteId, item.topicIndex)]}
-            onToggleMark={() => toggleTopicMark(item.noteId, item.topicIndex)}
-            onPress={() => navigateToTopic(item)}
-            isGlass={isSummarizeMode}
-          />
+          <View>
+            <FeedCard
+              item={item}
+              index={index}
+              Colors={Colors}
+              theme={theme}
+              isMarked={!!markedTopics[getTopicKey(item.noteId, item.topicIndex)]}
+              onToggleMark={() => toggleTopicMark(item.noteId, item.topicIndex)}
+              onPress={() => navigateToTopic(item)}
+              isGlass={isSummarizeMode}
+            />
+          </View>
         )}
       />
     </View>
@@ -749,6 +780,15 @@ const styles = StyleSheet.create({
   folderTab: {
     paddingVertical: 4,
     paddingHorizontal: 14,
+  },
+  tabInner: {
+    alignItems: 'center',
+    gap: 4,
+  },
+  tabDot: {
+    width: 4,
+    height: 4,
+    borderRadius: 2,
   },
   folderTabText: {
     fontFamily: "DMSans_600SemiBold",

@@ -5,35 +5,47 @@
  */
 
 const GEMINI_URL =
-    'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent';
+    'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-lite:generateContent';
 
-export type Topic = { title: string; body: string; summary: string };
+export type Topic = { title: string; body: string; summary: string; keywords?: string[]; wordCount?: number };
 
-const SYSTEM_PROMPT = `You are an expert academic organizer. The user will provide a continuous wall of study notes.
-Your task is to intelligently divide this text into logical, comprehensive topics based purely on semantic meaning and flow.
+const SYSTEM_PROMPT = `You are an expert academic organizer and study coach. The user will provide study notes.
+Your task is to intelligently divide this text into logical, comprehensive topics based purely on semantic meaning.
 
-CRITICAL RULES:
-1. Divide the text into comprehensive, self-contained topics. Each topic block MUST represent a complete, cohesive idea, workflow, or major section.
-2. DO NOT cut off topics abruptly. Ensure that a single continuous concept is fully contained within one block, even if it is long. Avoid splitting a process step-by-step artificially if it belongs together.
-3. Group related smaller points together. DO NOT create excessively short or disjointed blocks (e.g., a "black page with a few lines"). If a block feels too small or lacks context when read in isolation, it must be merged into the surrounding block.
-4. AGGRESSIVELY DELETE CONVERSATIONAL FILLER. If the text begins with or contains AI chatter (e.g., "Below are deep, structured...", "Here are your notes", "Sure, I can help", or random raw links), COMPLETELY OMIT that text from your entire output. Do NOT include it as a topic. Just skip straight to the actual study material.
-5. IGNORE all visual formatting (lines, spaces, dashes) or existing structural headers. Make splitting decisions based solely on when the underlying subject matter naturally and firmly shifts to a new major section.
-6. PRESERVE ALL ACTUAL STUDY CONTENT. Every single piece of relevant information, command, detail, code snippet, and bullet point from the original text MUST be included. 
-2. Give each topic a highly descriptive, comprehensive title based on the content inside that block. This heading MUST act as an accurate summary of what the block is teaching.
-   - DO NOT USE SHORT 1-2 WORD TITLES. The title SHOULD be a full, descriptive phrase or sentence (e.g., instead of "Advantages", use "The Key Advantages and Use Cases of Terraform State Files").
-   - The title must fully capture the breadth of the specific block's content.
-   - The heading MUST NOT be a raw URL link.
-8. GENERATE A DETAILED SUMMARY. For each block, write a comprehensive, in-depth paragraph (at least 5-8 full sentences) that deeply explains the core concepts, flow, and most important takeaways of that specific topic block. The summary should be highly detailed, long enough to fill a large reading card, and act as a standalone explanation of the material.
+SPLITTING RULES:
+1. Each block MUST represent a complete, self-contained concept or section. Never split mid-explanation.
+2. Each block should contain substantial content (ideally 80+ words). Merge very short items into their parent topic.
+3. Group related sub-points together. A process with numbered steps is ONE block, not multiple.
+4. Split when the subject matter genuinely shifts to a new domain, concept, or major section.
+5. IGNORE visual formatting (blank lines, dashes, headers). Split based on SEMANTIC meaning only.
 
-Respond ONLY with a valid JSON array of objects, containing no markdown fences and no extra explanation:
-[{"title":"...","body":"...","summary":"..."},...]`;
+TITLE RULES:
+- Titles MUST be descriptive phrases of 4-10 words that capture the block's full scope.
+- BAD: "Advantages", "Types", "Overview"
+- GOOD: "Key Advantages of Terraform State Files", "Types of Kubernetes Services", "Architecture Overview of CI/CD Pipeline"
+- Never use URLs as titles.
+
+CONTENT RULES:
+- PRESERVE every piece of study content: all bullet points, code snippets, commands, definitions, examples.
+- COMPLETELY OMIT AI chatter ("Here are your notes", "Sure!", "Below are structured..."). Skip to actual content.
+- Each block's body must contain the FULL original text of that section (not a summary).
+
+SUMMARY RULES:
+- Write a detailed 5-8 sentence paragraph explaining the core concepts and takeaways of that block.
+- The summary should work as a standalone study review card.
+
+KEYWORDS:
+- Extract 3-6 key technical terms or concepts from each block.
+
+Respond ONLY with a valid JSON array, no markdown fences, no extra text:
+[{"title":"...","body":"...","summary":"...","keywords":["term1","term2",...]},...]`;
 
 export async function analyzeWithGemini(
     content: string,
     apiKey: string,
     onProgress?: (msg: string) => void
 ): Promise<Topic[]> {
-    onProgress?.('AI started working…');
+    onProgress?.('Sending to AI…');
 
     const trimmed = content.trim();
     if (!trimmed) return [{ title: 'Note', body: content, summary: 'Empty note.' }];
@@ -68,7 +80,7 @@ export async function analyzeWithGemini(
         throw new Error(`Gemini ${res.status}: ${apiMessage}`);
     }
 
-    onProgress?.('Done. Now you can see the summarized notes in the AI summary section.');
+    onProgress?.('Processing AI response…');
     const json = await res.json();
     const rawText: string =
         json?.candidates?.[0]?.content?.parts?.[0]?.text ?? '';
@@ -94,5 +106,8 @@ export async function analyzeWithGemini(
         title: String(t.title ?? 'Topic').slice(0, 200),
         body: String(t.body ?? '').trim(),
         summary: String(t.summary ?? 'No summary available.').trim(),
+        keywords: Array.isArray(t.keywords) ? t.keywords.map(String).slice(0, 8) : undefined,
+        wordCount: typeof t.wordCount === 'number' ? t.wordCount : undefined,
     }));
 }
+

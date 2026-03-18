@@ -9,24 +9,41 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const DATA_DIR = `${documentDirectory ?? 'file:///data/user/0/com.reviseit/files/'}persistent_data/`;
 
+let dirEnsured = false;
+const writeQueues: Record<string, Promise<void>> = {};
+
 async function ensureDir() {
+    if (dirEnsured) return;
     const info = await getInfoAsync(DATA_DIR);
     if (!info.exists) {
-        await makeDirectoryAsync(DATA_DIR, { intermediates: true });
+        try {
+            await makeDirectoryAsync(DATA_DIR, { intermediates: true });
+        } catch (e: any) {
+            // Ignore if it somehow got created between the check and creation
+        }
     }
+    dirEnsured = true;
 }
 
 export async function saveToPersistentStore(key: string, data: any): Promise<void> {
-    try {
-        await ensureDir();
-        const path = `${DATA_DIR}${key}.json`;
-        await writeAsStringAsync(path, JSON.stringify(data));
-        // We also keep a mirror in AsyncStorage for quick sync access if needed,
-        // but the FileSystem version is the source of truth for "persistence".
-        await AsyncStorage.setItem(key, JSON.stringify(data));
-    } catch (e) {
-        console.warn(`Failed to save ${key} to persistent store:`, e);
-    }
+    // strict sequential queue per key to prevent filesystem write race conditions
+    const prevPromise = writeQueues[key] || Promise.resolve();
+    
+    writeQueues[key] = prevPromise.then(async () => {
+        try {
+            await ensureDir();
+            const path = `${DATA_DIR}${key}.json`;
+            await writeAsStringAsync(path, JSON.stringify(data));
+            // We also keep a mirror in AsyncStorage for quick sync access if needed
+            await AsyncStorage.setItem(key, JSON.stringify(data));
+        } catch (e) {
+            console.warn(`Failed to save ${key} to persistent store:`, e);
+        }
+    }).catch(e => {
+        console.warn(`Unexpected queue error making save ${key}:`, e);
+    });
+
+    return writeQueues[key];
 }
 
 export async function loadFromPersistentStore<T>(key: string, defaultValue: T): Promise<T> {

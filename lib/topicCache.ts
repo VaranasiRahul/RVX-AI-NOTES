@@ -16,6 +16,10 @@ export interface TopicEntry {
     title: string;
     body: string;
     summary: string;
+    keywords?: string[];
+    wordCount?: number;
+    hasCode?: boolean;
+    hasDefinitions?: boolean;
 }
 
 const CACHE_DIR = `${documentDirectory ?? 'file:///data/user/0/com.reviseit/files/'}ai_topics_v18/`;

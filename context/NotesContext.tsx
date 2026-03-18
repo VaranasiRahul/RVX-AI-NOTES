@@ -1,7 +1,8 @@
 import React, { createContext, useContext, useState, useEffect, useMemo, ReactNode, useCallback } from 'react';
 import * as Crypto from 'expo-crypto';
 import type { TopicEntry } from '@/lib/topicCache';
-import { generateLocalSummary } from '@/lib/localSummarizer';
+import { generateDeepSummary } from '@/lib/deepSummarizer';
+import { extractKeywords, stripMarkdown } from '@/lib/localSummarizer';
 import { WidgetManager } from '@/lib/widget';
 import {
   loadFromPersistentStore,
@@ -215,7 +216,7 @@ export async function runAiAnalysis(
       // if the existing summary is too short/invalid or is just a copy of body.
       const summaryIsValid = (
         t.summary &&
-        t.summary.trim().length > 30 &&
+        t.summary.trim().length > 80 &&
         !t.summary.startsWith(body.slice(0, 20))
       );
 
@@ -224,7 +225,11 @@ export async function runAiAnalysis(
         body,
         summary: summaryIsValid
           ? t.summary
-          : generateLocalSummary(body, 6, title),
+          : generateDeepSummary(body, title),
+        keywords: t.keywords || extractKeywords(body, 5),
+        wordCount: t.wordCount || body.trim().split(/\s+/).filter(w => w.length > 0).length,
+        hasCode: t.hasCode ?? /```[\s\S]*?```/.test(body),
+        hasDefinitions: t.hasDefinitions ?? /\bis\s+(a|an|the)\b|\bare\s+(a|an|the)\b|\bdefin|\brefer[s]?\s+to\b|\bmeans?\b/i.test(body),
       });
     }
 
@@ -232,7 +237,7 @@ export async function runAiAnalysis(
       cleanTopics = [{
         title: 'Note Content',
         body: content,
-        summary: generateLocalSummary(content, 8, 'Note Content'),
+        summary: generateDeepSummary(content, 'Note Content'),
       }];
     }
 
@@ -254,7 +259,7 @@ export function parseTopics(note: Note): TopicEntry[] {
   const raw = note.content;
   if (!raw.trim()) return [];
 
-  const extractTitle = (text: string): string => {
+  const extractTitleFromBlock = (text: string): string => {
     const allLines = text.split('\n').map((l: string) => l.trim()).filter((l: string) => l.length > 0);
     let firstValidLine = '';
     for (const line of allLines) {
@@ -272,6 +277,9 @@ export function parseTopics(note: Note): TopicEntry[] {
       .trim()
       .slice(0, 100) || 'Topic';
   };
+
+  const countWords = (text: string): number =>
+    text.trim().split(/\s+/).filter(w => w.length > 0).length;
 
   const lines = raw.split('\n');
   const blocks: string[] = [];
@@ -295,7 +303,6 @@ export function parseTopics(note: Note): TopicEntry[] {
       if (hrCount === 0) {
         current.push(line);
       }
-      // ignore blank lines within separator groups
     } else {
       if (hrCount >= 2) {
         flush();
@@ -308,23 +315,28 @@ export function parseTopics(note: Note): TopicEntry[] {
   }
   flush();
 
-  if (blocks.length === 0) {
-    return [{
-      title: extractTitle(raw),
-      body: raw.trim(),
-      summary: generateLocalSummary(raw.trim(), 6, extractTitle(raw)),
-    }];
-  }
-
-  return blocks.map(block => {
-    const title = extractTitle(block);
+  const buildTopic = (block: string): TopicEntry => {
+    const title = extractTitleFromBlock(block);
+    const wc = countWords(block);
+    const keywords = extractKeywords(block, 5);
+    const hasCode = /```[\s\S]*?```/.test(block);
+    const hasDefinitions = /\bis\s+(a|an|the)\b|\bare\s+(a|an|the)\b|\bdefin|\brefer[s]?\s+to\b|\bmeans?\b/i.test(block);
     return {
       title,
       body: block,
-      // 6 sentences — enough for card preview; AI cache has richer version
-      summary: generateLocalSummary(block, 6, title),
+      summary: generateDeepSummary(block, title),
+      keywords,
+      wordCount: wc,
+      hasCode,
+      hasDefinitions,
     };
-  });
+  };
+
+  if (blocks.length === 0) {
+    return [buildTopic(raw.trim())];
+  }
+
+  return blocks.map(buildTopic);
 }
 
 
@@ -435,7 +447,7 @@ export function NotesProvider({ children }: { children: ReactNode }) {
       if (geminiKey) setGeminiApiKeyState(geminiKey);
       setHapticsEnabledState(hapticsJson !== false);
       const loadedFolders: Folder[] = foldersJson;
-      const loadedNotes: Note[] = (notesJson || []).map(n => ({ tags: [], ...n }));
+      const loadedNotes: Note[] = (notesJson || []).map(n => ({ ...n, tags: n.tags || [] }));
       const loadedStreak: StreakData = {
         ...DEFAULT_STREAK,
         ...(streakJson || {}),
@@ -628,31 +640,36 @@ export function NotesProvider({ children }: { children: ReactNode }) {
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };
-    const updated = [...notes, note];
-    setNotes(updated);
-    await saveToPersistentStore(STORAGE_KEYS.NOTES, updated);
+    setNotes(prev => {
+      const updated = [...prev, note];
+      saveToPersistentStore(STORAGE_KEYS.NOTES, updated);
+      return updated;
+    });
 
     return note;
-  }, [notes, geminiApiKey]);
+  }, []);
 
   const updateNote = useCallback(async (id: string, title: string, content: string, tags?: string[]) => {
-    const updated = notes.map(n =>
-      n.id === id
-        ? { ...n, title, content, updatedAt: new Date().toISOString(), ...(tags !== undefined ? { tags } : {}) }
-        : n
-    );
-    setNotes(updated);
-    await saveToPersistentStore(STORAGE_KEYS.NOTES, updated);
-
-  }, [notes, geminiApiKey]);
+    setNotes(prev => {
+      const updated = prev.map(n =>
+        n.id === id
+          ? { ...n, title, content, updatedAt: new Date().toISOString(), ...(tags !== undefined ? { tags } : {}) }
+          : n
+      );
+      saveToPersistentStore(STORAGE_KEYS.NOTES, updated);
+      return updated;
+    });
+  }, []);
 
   const deleteNote = useCallback(async (id: string) => {
-    const updated = notes.filter(n => n.id !== id);
-    setNotes(updated);
-    await saveToPersistentStore(STORAGE_KEYS.NOTES, updated);
+    setNotes(prev => {
+      const updated = prev.filter(n => n.id !== id);
+      saveToPersistentStore(STORAGE_KEYS.NOTES, updated);
+      return updated;
+    });
     const { clearCachedTopics } = await import('@/lib/topicCache');
     await clearCachedTopics(id);
-  }, [notes]);
+  }, []);
 
   const getNotesByFolder = useCallback((folderId: string): Note[] => {
     return notes.filter(n => n.folderId === folderId);

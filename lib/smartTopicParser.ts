@@ -39,31 +39,20 @@
  */
 
 import {
-    generateLocalSummary,
-    generateSummary,
     extractKeywords,
     stripMarkdown,
 } from '@/lib/localSummarizer';
+import {
+    generateDeepSummary,
+    generateDeepSummaryAsync,
+} from '@/lib/deepSummarizer';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // CONSTANTS
 // ─────────────────────────────────────────────────────────────────────────────
-const MIN_BLOCK_WORDS = 40;
+const MIN_BLOCK_WORDS    = 80;    // merge unstructured blocks shorter than this
+const FORCE_MERGE_WORDS  = 20;    // always merge fragments this tiny (no exceptions)
 const SEMANTIC_JACCARD_THRESHOLD = 0.08;
-
-/**
- * Sentence budget for the per-block summary.
- *  • sync path  — kept at 9 (unchanged from v1)
- *  • async path — scales with block length for better coverage of large sections
- */
-const SYNC_SENTENCE_COUNT = 9;
-const ASYNC_SENTENCE_MIN = 6;
-const ASYNC_SENTENCE_MAX = 14;
-
-function asyncSentenceBudget(blockWordCount: number): number {
-    // ~1 sentence per 60 words, clamped to [6, 14]
-    return Math.min(ASYNC_SENTENCE_MAX, Math.max(ASYNC_SENTENCE_MIN, Math.round(blockWordCount / 60)));
-}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // STOP WORDS
@@ -92,26 +81,65 @@ const TOPIC_TRANSITIONS = [
 // ─────────────────────────────────────────────────────────────────────────────
 // LINE-LEVEL BOUNDARY PATTERNS
 // ─────────────────────────────────────────────────────────────────────────────
-const LINE_BOUNDARY_PATTERNS: Array<{ rx: RegExp; maxWords?: number }> = [
-    { rx: /^#{1,6}\s+\S/ },
-    { rx: /^\d{1,3}[\.\)]\s+[A-Za-z]/ },
-    { rx: /^[IVX]{1,4}[\.\)]\s+[A-Z]/ },
-    { rx: /^(PART|CHAPTER|UNIT|SECTION|MODULE)\s*\d+/i },
-    { rx: /^\*\*[^*]{2,80}\*\*\s*$/ },
-    { rx: /^__[^_]{2,80}__\s*$/ },
-    { rx: /^[a-zA-Z][a-zA-Z0-9\s\-_.]{1,55}:\s*$/, maxWords: 6 },
-    { rx: /^[A-Z][A-Z0-9\s]{4,50}$/, maxWords: 8 },
-];
+// Annotation labels that appear inside an explanation — NOT new concept starts.
+// "Note:", "Step 1:", "Time Complexity:" stay with the current block.
+const COLON_CONTINUATION_LABELS = new Set([
+    'note', 'example', 'examples', 'output', 'input', 'result', 'results',
+    'syntax', 'usage', 'warning', 'important', 'caution', 'tip', 'hint',
+    'definition', 'summary', 'step', 'steps', 'answer', 'question',
+    'solution', 'problem', 'task', 'exercise', 'practice',
+    'complexity', 'time complexity', 'space complexity', 'runtime',
+    'analysis', 'proof', 'theorem', 'lemma', 'corollary', 'claim',
+    'pseudocode', 'algorithm', 'approach', 'intuition', 'observation',
+    'base case', 'recursive case', 'inductive step',
+]);
 
 function isLineBoundary(line: string): boolean {
     const t = line.trim();
     if (!t || t.length < 2 || t.length > 120) return false;
-    for (const { rx, maxWords } of LINE_BOUNDARY_PATTERNS) {
-        if (rx.test(t)) {
-            if (maxWords !== undefined && t.split(/\s+/).length > maxWords) continue;
-            return true;
+
+    // Markdown headings — always split
+    if (/^#{1,6}\s+\S/.test(t)) return true;
+
+    // Bold-only / underline-only heading lines
+    if (/^\*\*[^*]{2,80}\*\*\s*$/.test(t)) return true;
+    if (/^__[^_]{2,80}__\s*$/.test(t)) return true;
+
+    // PART / CHAPTER / UNIT / SECTION N
+    if (/^(PART|CHAPTER|UNIT|SECTION|MODULE)\s*\d+/i.test(t)) return true;
+
+    // Roman numeral section: "I.", "IV." at paragraph start
+    if (/^[IVX]{1,4}[\.\)]\s+[A-Z]/.test(t)) return true;
+
+    // Numbered items — ONLY split on short labels, NOT continuation sentences.
+    // "4. Deployment"                → SPLIT  (≤8 words, no sentence punctuation)
+    // "10. Persistent Volume (PV)"   → SPLIT
+    // "3. This means the scheduler…" → NO SPLIT (sentence ending with period)
+    // "2. It ensures replicas are…"  → NO SPLIT (sentence)
+    if (/^\d{1,3}[\.\)]\s+[A-Za-z]/.test(t)) {
+        const afterNum = t.replace(/^\d{1,3}[\.\)]\s+/, '');
+        const words = afterNum.trim().split(/\s+/).length;
+        const endsWithSentencePunct = /[.!?,;]$/.test(afterNum.trim()) && words > 4;
+        if (!endsWithSentencePunct && words <= 8) return true;
+    }
+
+    // ALL CAPS headings — require ≥2 words to avoid matching inline abbreviations
+    // "INTRODUCTION" → SPLIT,  "TIME COMPLEXITY" → SPLIT,  "CPU" → NO SPLIT
+    if (/^[A-Z][A-Z0-9\s]{4,50}$/.test(t)) {
+        const words = t.split(/\s+/);
+        if (words.length >= 2 && words.length <= 8) return true;
+    }
+
+    // Colon headers — split on proper-noun-style names: "Worker nodes:", "etcd:"
+    // Excluded: single-word annotation markers listed in COLON_CONTINUATION_LABELS
+    if (/^[a-zA-Z][a-zA-Z0-9\s\-_.]{1,55}:\s*$/.test(t)) {
+        if (t.split(/\s+/).length <= 6) {
+            const label = t.replace(/:\s*$/, '').toLowerCase()
+                .replace(/\s+\d+$/, ''); // strip trailing numbers: "Step 1" → "step"
+            if (!COLON_CONTINUATION_LABELS.has(label)) return true;
         }
     }
+
     return false;
 }
 
@@ -226,11 +254,9 @@ function segmentIntoParagraphs(content: string): string[] {
         if (isHR) { hrCount++; continue; }
 
         if (trimmed === '') {
-            if (hrCount >= 2) {
+            if (hrCount >= 1) {
+                // Any horizontal rule (1+) creates a new paragraph boundary
                 flush();
-            } else if (hrCount === 1) {
-                current.push('---');
-                hrCount = 0;
             } else {
                 const accumulated = current.join('\n').trim();
                 if (accumulated.length > 0) { paragraphs.push(accumulated); current = []; }
@@ -238,12 +264,22 @@ function segmentIntoParagraphs(content: string): string[] {
             continue;
         }
 
-        if (hrCount >= 2) flush();
-        else if (hrCount === 1) { current.push('---'); }
+        if (hrCount >= 1) {
+            // A horizontal rule followed immediately by content (no blank line gap)
+            // also flushes the current block
+            flush();
+        }
         hrCount = 0;
 
-        // THE FIX: split on structural line boundaries even without blank lines
-        if (isLineBoundary(trimmed)) flush();
+        // Split on structural line boundaries even without blank lines
+        // BUT: don't split if the previous accumulated content ends with a code fence
+        // opener (code affinity — keep prose → code together)
+        if (isLineBoundary(trimmed)) {
+            const accumulated = current.join('\n');
+            const openFences = (accumulated.match(/```/g) || []).length;
+            const isInsideCode = openFences % 2 !== 0;
+            if (!isInsideCode) flush();
+        }
 
         current.push(line);
     }
@@ -325,34 +361,98 @@ function groupIntoBlocks(paragraphs: string[], boundaries: Set<number>): string[
 // ─────────────────────────────────────────────────────────────────────────────
 // PHASE 4 — MERGE SHORT BLOCKS
 // ─────────────────────────────────────────────────────────────────────────────
+/**
+ * Check if a block contains an unmatched code fence — meaning a code block
+ * is split across block boundaries. We need to merge these.
+ */
+function hasUnmatchedCodeFence(block: string): boolean {
+    return (block.match(/```/g) || []).length % 2 !== 0;
+}
+
 function mergeShortBlocks(blocks: string[]): string[] {
     if (blocks.length <= 1) return blocks;
-
     const result: string[] = [];
 
     for (const block of blocks) {
         const wc = wordCount(block);
+        const curIsStructured  = startsWithBoundary(block);
         const prevIsStructured = result.length > 0 && startsWithBoundary(result[result.length - 1]);
-        const curIsStructured = startsWithBoundary(block);
 
-        if (wc < MIN_BLOCK_WORDS && result.length > 0 && !curIsStructured && !prevIsStructured) {
-            result[result.length - 1] = result[result.length - 1] + '\n\n' + block;
+        // Tier 1: tiny unstructured orphan fragment — always absorb, no exceptions
+        if (wc <= FORCE_MERGE_WORDS && !curIsStructured && result.length > 0) {
+            result[result.length - 1] += '\n\n' + block;
+        // Tier 2: short unstructured block — merge if neighbor is also unstructured
+        } else if (wc < MIN_BLOCK_WORDS && result.length > 0 && !curIsStructured && !prevIsStructured) {
+            result[result.length - 1] += '\n\n' + block;
         } else {
             result.push(block);
         }
     }
 
+    // Tail pass: still-tiny unstructured final block
     if (result.length >= 2) {
         const last = result[result.length - 1];
-        const secondToLast = result[result.length - 2];
-        if (
-            wordCount(last) < MIN_BLOCK_WORDS &&
+        const prev = result[result.length - 2];
+        if (wordCount(last) < MIN_BLOCK_WORDS &&
             !startsWithBoundary(last) &&
-            !startsWithBoundary(secondToLast)
-        ) {
+            !startsWithBoundary(prev)) {
             result.pop();
             result[result.length - 1] += '\n\n' + last;
         }
+    }
+
+    return result;
+}
+
+/**
+ * Phase 5: Re-merge blocks that were cut mid-explanation.
+ * Runs after mergeShortBlocks. Iterates until stable.
+ *
+ * Merges adjacent pair (A, B) when ALL of:
+ *   • NOT both start with structural boundaries (those splits are intentional)
+ *   • One of:
+ *     a) One block is a tiny fragment (<20 words) — almost certainly a continuation
+ *     b) High vocabulary similarity (Jaccard > 0.18) and combined < 200 words
+ *     c) Medium similarity (> 0.10) with one block short (<50 words) and combined < 160
+ */
+function semanticAffinityMerge(blocks: string[]): string[] {
+    if (blocks.length <= 1) return blocks;
+
+    let changed = true;
+    let result = [...blocks];
+
+    while (changed) {
+        changed = false;
+        const next: string[] = [];
+        let i = 0;
+
+        while (i < result.length) {
+            if (i + 1 < result.length) {
+                const a = result[i];
+                const b = result[i + 1];
+                const wcA = wordCount(a);
+                const wcB = wordCount(b);
+                const combined = wcA + wcB;
+                const sim = jaccardSimilarity(contentWords(a), contentWords(b));
+                const bothStructured = startsWithBoundary(a) && startsWithBoundary(b);
+
+                if (!bothStructured) {
+                    const tinyFragment   = Math.min(wcA, wcB) < 20 && combined < 180;
+                    const highSim        = sim > 0.18 && combined < 200;
+                    const medSimOneSmall = sim > 0.10 && Math.min(wcA, wcB) < 50 && combined < 160;
+
+                    if (tinyFragment || highSim || medSimOneSmall) {
+                        next.push(a + '\n\n' + b);
+                        i += 2;
+                        changed = true;
+                        continue;
+                    }
+                }
+            }
+            next.push(result[i]);
+            i++;
+        }
+        result = next;
     }
 
     return result;
@@ -376,14 +476,49 @@ export interface ParsedTopic {
 // ─────────────────────────────────────────────────────────────────────────────
 function splitIntoBlocks(content: string): string[] {
     if (!content || content.trim().length === 0) return [];
-    if (wordCount(content) < MIN_BLOCK_WORDS * 2) return [content.trim()];
 
+    // ── Detect explicit user-placed HR separators ─────────────────────────────
+    // If the note has ANY `---` on its own line, split on those strictly.
+    // User-placed separators express explicit intent and must never be merged.
+    const hasExplicitHR = /^-{3,}\s*$/m.test(content) || /^\*{3,}\s*$/m.test(content) || /^={3,}\s*$/m.test(content);
+
+    if (hasExplicitHR) {
+        const lines = content.split('\n');
+        const blocks: string[] = [];
+        let current: string[] = [];
+        let inCodeBlock = false;
+
+        const flushBlock = () => {
+            const text = current.join('\n').trim();
+            if (text.length > 0) blocks.push(text);
+            current = [];
+        };
+
+        for (const line of lines) {
+            const trimmed = line.trim();
+            if (trimmed.startsWith('```')) inCodeBlock = !inCodeBlock;
+            if (!inCodeBlock && (/^-{3,}\s*$/.test(trimmed) || /^\*{3,}\s*$/.test(trimmed) || /^={3,}\s*$/.test(trimmed))) {
+                flushBlock();
+                continue;
+            }
+            current.push(line);
+        }
+        flushBlock();
+
+        // Filter empties — but always respect the user's intent, even for 1-line blocks
+        const valid = blocks.filter(b => b.trim().replace(/\s/g, '').length > 0);
+        if (valid.length > 1) return valid;
+        // Single result means all separators were decorative (e.g., fenced code); fall through
+    }
+
+    // ── Heuristic semantic split for notes without explicit separators ────────
     const paragraphs = segmentIntoParagraphs(content);
     if (paragraphs.length === 0) return [content.trim()];
 
     const boundaries = detectBoundaries(paragraphs);
     let blocks = groupIntoBlocks(paragraphs, boundaries);
     blocks = mergeShortBlocks(blocks);
+    blocks = semanticAffinityMerge(blocks);
 
     return blocks.length > 0 ? blocks : [content.trim()];
 }
@@ -410,13 +545,17 @@ export function smartSplitTopics(content: string): ParsedTopic[] {
         }];
     }
 
-    if (wordCount(content) < MIN_BLOCK_WORDS * 2) {
-        const keywords = extractKeywords(content, 6);
+    // ── Always split first so --- separators are respected ────────────────────
+    const blocks = splitIntoBlocks(content);
+
+    // Single-block short-circuit only when there truly is one block
+    if (blocks.length === 1) {
+        const keywords = extractKeywords(content, 8);
         const title = extractTitle(content, keywords);
         return [{
             title,
             body: content.trim(),
-            summary: generateLocalSummary(content.trim(), SYNC_SENTENCE_COUNT, title),
+            summary: generateDeepSummary(content.trim(), title),
             keywords,
             wordCount: wordCount(content),
             hasCode: /```[\s\S]*?```/.test(content),
@@ -424,12 +563,10 @@ export function smartSplitTopics(content: string): ParsedTopic[] {
         }];
     }
 
-    const blocks = splitIntoBlocks(content);
-
     return blocks.map(block => {
-        const keywords = extractKeywords(block, 6);
+        const keywords = extractKeywords(block, 8);
         const title = extractTitle(block, keywords);
-        const summary = generateLocalSummary(block, SYNC_SENTENCE_COUNT, title);
+        const summary = generateDeepSummary(block, title);
         return {
             title,
             body: block.trim(),
@@ -471,14 +608,14 @@ export async function smartSplitTopicsAsync(content: string): Promise<ParsedTopi
         }];
     }
 
-    if (wordCount(content) < MIN_BLOCK_WORDS * 2) {
-        const keywords = extractKeywords(content, 6);
+    // ── Always split first so --- separators are respected ────────────────────
+    const blocks = splitIntoBlocks(content);
+
+    // Single-block short-circuit only when there truly is one block
+    if (blocks.length === 1) {
+        const keywords = extractKeywords(content, 8);
         const title = extractTitle(content, keywords);
-        const summary = await generateSummary(content.trim(), {
-            mode: 'paragraph',
-            title,
-            totalSentences: asyncSentenceBudget(wordCount(content)),
-        });
+        const summary = await generateDeepSummaryAsync(content.trim(), title);
         return [{
             title,
             body: content.trim(),
@@ -490,20 +627,14 @@ export async function smartSplitTopicsAsync(content: string): Promise<ParsedTopi
         }];
     }
 
-    const blocks = splitIntoBlocks(content);
-
     const topics: ParsedTopic[] = await Promise.all(
         blocks.map(async block => {
             const wc = wordCount(block);
-            const keywords = extractKeywords(block, 6);
+            const keywords = extractKeywords(block, 8);
             const title = extractTitle(block, keywords);
 
-            // Generate summary using full async pipeline
-            const summary = await generateSummary(block, {
-                mode: 'paragraph',
-                title,
-                totalSentences: asyncSentenceBudget(wc),
-            });
+            // Generate deep summary using the new engine
+            const summary = await generateDeepSummaryAsync(block, title);
 
             return {
                 title,
