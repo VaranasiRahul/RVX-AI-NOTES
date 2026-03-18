@@ -113,6 +113,8 @@ const FeedCard = React.memo(function FeedCard({
     const [activeIndex, setActiveIndex] = useState(0);
     const carouselRef = useRef<FlatList>(null);
 
+    const autoAdvancedMap = useRef<Record<number, boolean>>({});
+
     // ── Auto-advance: when scrollView inside a slide reaches bottom, swipe to next ──
     const handleInnerScroll = useCallback((chunkIdx: number, e: NativeSyntheticEvent<NativeScrollEvent>) => {
         if (chunkIdx >= chunks.length - 1) return; // already at last slide
@@ -126,7 +128,14 @@ const FeedCard = React.memo(function FeedCard({
         // we trigger the advance before the ScrollView actually hits its limit.
         // This prevents the gesture from bleeding through to the outer FlatList.
         if (maxOffset > 0 && contentOffset.y > maxOffset - 50) {
-            carouselRef.current?.scrollToIndex({ index: chunkIdx + 1, animated: true });
+            if (!autoAdvancedMap.current[chunkIdx]) {
+                autoAdvancedMap.current[chunkIdx] = true;
+                carouselRef.current?.scrollToIndex({ index: chunkIdx + 1, animated: true });
+            }
+        } else {
+            if (autoAdvancedMap.current[chunkIdx]) {
+                autoAdvancedMap.current[chunkIdx] = false;
+            }
         }
     }, [chunks.length]);
 
