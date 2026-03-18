@@ -111,31 +111,33 @@ const FeedCard = React.memo(function FeedCard({
     }
 
     const [activeIndex, setActiveIndex] = useState(0);
+    const activeIndexRef = useRef(0);
     const carouselRef = useRef<FlatList>(null);
 
-    const autoAdvancedMap = useRef<Record<number, boolean>>({});
+    const scrollRefs = useRef<Record<number, any>>({});
 
-    // ── Auto-advance: when scrollView inside a slide reaches bottom, swipe to next ──
-    const handleInnerScroll = useCallback((chunkIdx: number, e: NativeSyntheticEvent<NativeScrollEvent>) => {
+    // ── Auto-advance: when scrollView pulls past the bottom, swipe to next ──
+    const handleScrollEnd = useCallback((chunkIdx: number, e: NativeSyntheticEvent<NativeScrollEvent>) => {
         if (chunkIdx >= chunks.length - 1) return; // already at last slide
+        if (chunkIdx !== activeIndexRef.current) return; // only process scroll for active slide
 
         const { contentOffset, contentSize, layoutMeasurement } = e.nativeEvent;
         const maxOffset = contentSize.height - layoutMeasurement.height;
         
         // We add 120px padding to the bottom of non-last slides (see ScrollView props).
-        // The user reaches the 'end of text' at roughly (maxOffset - 120).
-        // If they scroll past the text into this padding area (e.g., within 50px of absolute bottom),
-        // we trigger the advance before the ScrollView actually hits its limit.
-        // This prevents the gesture from bleeding through to the outer FlatList.
-        if (maxOffset > 0 && contentOffset.y > maxOffset - 50) {
-            if (!autoAdvancedMap.current[chunkIdx]) {
-                autoAdvancedMap.current[chunkIdx] = true;
-                carouselRef.current?.scrollToIndex({ index: chunkIdx + 1, animated: true });
-            }
-        } else {
-            if (autoAdvancedMap.current[chunkIdx]) {
-                autoAdvancedMap.current[chunkIdx] = false;
-            }
+        // If they scroll past the text into this padding area (e.g., > maxOffset - 40),
+        // we trigger the advance. Doing this on scroll END prevents gesture conflicts
+        // that cause the FlatList to get stuck mid-scroll.
+        if (maxOffset > 0 && contentOffset.y > maxOffset - 40) {
+            activeIndexRef.current = chunkIdx + 1; // preemptively update to prevent double firing
+            carouselRef.current?.scrollToIndex({ index: chunkIdx + 1, animated: true });
+            
+            // Instantly snap the current scroll view back to the bottom of the text.
+            // maxOffset includes the 100px View and 120px padding. Subtracting 250 
+            // completely hides the "Keep pulling" indicator so it isn't seen when swiping back.
+            setTimeout(() => {
+                scrollRefs.current[chunkIdx]?.scrollTo({ y: Math.max(0, maxOffset - 250), animated: false });
+            }, 500);
         }
     }, [chunks.length]);
 
@@ -144,6 +146,7 @@ const FeedCard = React.memo(function FeedCard({
             e.nativeEvent.contentOffset.x / e.nativeEvent.layoutMeasurement.width
         );
         if (slide !== activeIndex) {
+            activeIndexRef.current = slide;
             setActiveIndex(slide);
         }
     }, [activeIndex]);
@@ -328,10 +331,12 @@ const FeedCard = React.memo(function FeedCard({
                     renderItem={({ item: chunkText, index: chunkIdx }) => (
                         <View style={styles.carouselSlide}>
                             <ScrollView
+                                ref={(el) => { if (el) scrollRefs.current[chunkIdx] = el; }}
                                 nestedScrollEnabled
                                 showsVerticalScrollIndicator={false}
                                 scrollEventThrottle={16}
-                                onScroll={(e) => handleInnerScroll(chunkIdx, e)}
+                                onScrollEndDrag={(e) => handleScrollEnd(chunkIdx, e)}
+                                onMomentumScrollEnd={(e) => handleScrollEnd(chunkIdx, e)}
                                 contentContainerStyle={{
                                     paddingBottom: chunkIdx < chunks.length - 1 ? 120 : 20
                                 }}
