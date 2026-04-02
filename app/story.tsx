@@ -17,7 +17,7 @@ import * as Haptics from "expo-haptics";
 import Animated, { FadeIn, FadeOut } from "react-native-reanimated";
 import { useNotes, getTopicKey, parseTopics } from "@/context/NotesContext";
 import { getCachedTopics } from "@/lib/topicCache";
-import { stripMarkdown } from "@/components/FeedCard";
+import Markdown from "react-native-markdown-display";
 
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
 
@@ -225,6 +225,34 @@ export default function StoryScreen() {
     const isMarked = !!markedTopics[currentTopic.topicKey];
     const folder = folders.find(f => f.id === currentTopic.folderId) || { name: "Saved Topic", color: "#3EA6FF" };
 
+    const storyMarkdownStyles = StyleSheet.create({
+        body: { fontFamily: "DMSans_400Regular", fontSize: 17, color: "rgba(255,255,255,0.9)", lineHeight: 28, backgroundColor: "transparent" },
+        heading1: { fontFamily: "PlayfairDisplay_700Bold", fontSize: 26, color: "#FFFFFF", marginTop: 20, marginBottom: 10, lineHeight: 34 },
+        heading2: { fontFamily: "PlayfairDisplay_700Bold", fontSize: 22, color: "#FFFFFF", marginTop: 16, marginBottom: 8, lineHeight: 30 },
+        heading3: { fontFamily: "DMSans_600SemiBold", fontSize: 19, color: "#FFFFFF", marginTop: 14, marginBottom: 6, lineHeight: 27 },
+        heading4: { fontFamily: "DMSans_600SemiBold", fontSize: 17, color: "#FFFFFF", marginTop: 12, marginBottom: 4 },
+        paragraph: { fontFamily: "DMSans_400Regular", fontSize: 17, color: "rgba(255,255,255,0.9)", lineHeight: 28, marginBottom: 12 },
+        strong: { fontFamily: "DMSans_600SemiBold", color: "#FFFFFF" },
+        em: { fontStyle: "italic", color: "rgba(255,255,255,0.85)" },
+        s: { textDecorationLine: "line-through", color: "rgba(255,255,255,0.5)" },
+        code_inline: { fontFamily: Platform.select({ ios: "Menlo", android: "monospace", default: "monospace" }), fontSize: 14, backgroundColor: "rgba(255,255,255,0.1)", color: "#A8D0FF", paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 },
+        fence: { fontFamily: Platform.select({ ios: "Menlo", android: "monospace", default: "monospace" }), fontSize: 13, backgroundColor: "rgba(255,255,255,0.06)", color: "#A8D0FF", padding: 14, borderRadius: 10, borderLeftWidth: 3, borderLeftColor: "#3EA6FF", marginVertical: 10, lineHeight: 20 },
+        blockquote: { backgroundColor: "rgba(62,166,255,0.1)", borderLeftWidth: 3, borderLeftColor: "#3EA6FF", paddingLeft: 14, paddingVertical: 8, marginVertical: 10, borderRadius: 6 },
+        bullet_list: { marginBottom: 10 },
+        ordered_list: { marginBottom: 10 },
+        list_item: { flexDirection: "row", alignItems: "flex-start", marginBottom: 6 },
+        bullet_list_icon: { marginRight: 8, marginTop: 10, width: 6, height: 6, borderRadius: 3, backgroundColor: "#3EA6FF" },
+        ordered_list_icon: { fontFamily: "DMSans_600SemiBold", fontSize: 15, color: "#3EA6FF", marginRight: 8, minWidth: 20 },
+        hr: { backgroundColor: "rgba(255,255,255,0.15)", height: 1, marginVertical: 16 },
+        link: { color: "#3EA6FF", textDecorationLine: "underline" },
+        table: { borderWidth: 1, borderColor: "rgba(255,255,255,0.15)", borderRadius: 8, marginVertical: 10, overflow: "hidden" },
+        thead: { backgroundColor: "rgba(255,255,255,0.06)" },
+        th: { fontFamily: "DMSans_600SemiBold", fontSize: 13, color: "#FFFFFF", padding: 10, borderRightWidth: 1, borderRightColor: "rgba(255,255,255,0.1)" },
+        tr: { borderBottomWidth: 1, borderBottomColor: "rgba(255,255,255,0.08)", flexDirection: "row" },
+        td: { fontFamily: "DMSans_400Regular", fontSize: 13, color: "rgba(255,255,255,0.85)", padding: 10, borderRightWidth: 1, borderRightColor: "rgba(255,255,255,0.08)", flex: 1 },
+        image: { width: SCREEN_WIDTH - 48, height: 200, borderRadius: 10, marginVertical: 10 },
+    });
+
     return (
         <View style={styles.container}>
             <StatusBar barStyle="light-content" backgroundColor="#0F172A" />
@@ -306,9 +334,9 @@ export default function StoryScreen() {
                         >
                             <Text style={[styles.noteTitleTag, { color: folder.color }]}>{currentTopic.noteTitle}</Text>
                             <Text style={styles.topicTitle}>{currentTopic.title}</Text>
-                            <Text style={styles.topicBody}>
-                                {stripMarkdown(currentTopic.body)}
-                            </Text>
+                            <Markdown style={storyMarkdownStyles as any}>
+                                {currentTopic.body}
+                            </Markdown>
                         </ScrollView>
                     </View>
 
@@ -440,12 +468,6 @@ const styles = StyleSheet.create({
         fontSize: 32,
         lineHeight: 40,
         marginBottom: 24,
-    },
-    topicBody: {
-        color: "rgba(255,255,255,0.9)",
-        fontFamily: "DMSans_400Regular",
-        fontSize: 18,
-        lineHeight: 28,
     },
     bottomBar: {
         flexDirection: "row",

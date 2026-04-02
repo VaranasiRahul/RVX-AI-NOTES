@@ -934,7 +934,7 @@ function splitInlineTopics(text: string): string[] {
         if (segment.length > 0) segments.push(segment);
     }
 
-    return segments.length >= 2 ? segments : null;
+    return segments.length >= 2 ? segments : [text];
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

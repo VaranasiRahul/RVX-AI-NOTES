@@ -676,16 +676,31 @@ export function NotesProvider({ children }: { children: ReactNode }) {
   }, [notes]);
 
   const exportData = useCallback(async (): Promise<string> => {
+    // Build topic cache snapshot for all notes
+    const { getCachedTopics } = await import('@/lib/topicCache');
+    const topicCache: Record<string, any> = {};
+    for (const note of notes) {
+      const cached = await getCachedTopics(note.id, note.content);
+      if (cached) {
+        topicCache[note.id] = { content: note.content, topics: cached };
+      }
+    }
+
     const data = {
-      version: 2,
+      version: 3,
       exportedAt: new Date().toISOString(),
       folders,
       notes,
       streak,
       topicProgress,
+      markedTopics,
+      dailyTopic,
+      geminiApiKey,
+      hapticsEnabled,
+      topicCache,
     };
     return JSON.stringify(data, null, 2);
-  }, [folders, notes, streak, topicProgress]);
+  }, [folders, notes, streak, topicProgress, markedTopics, dailyTopic, geminiApiKey, hapticsEnabled]);
 
   const importData = useCallback(async (json: string) => {
     const data = JSON.parse(json);
@@ -693,18 +708,41 @@ export function NotesProvider({ children }: { children: ReactNode }) {
     const importedNotes: Note[] = (data.notes || []).map((n: any) => ({ tags: [], ...n }));
     const importedStreak: StreakData = { ...DEFAULT_STREAK, ...(data.streak || {}) };
     const importedSR: Record<string, TopicProgress> = data.topicProgress || {};
+    const importedMarked: Record<string, boolean> = data.markedTopics || {};
+    const importedDaily: DailyTopic | null = data.dailyTopic || null;
+    const importedGeminiKey: string = data.geminiApiKey || '';
+    const importedHaptics: boolean = data.hapticsEnabled !== undefined ? data.hapticsEnabled : true;
 
     setFolders(importedFolders);
     setNotes(importedNotes);
     setStreak(importedStreak);
     setTopicProgress(importedSR);
+    setMarkedTopics(importedMarked);
+    if (importedDaily) setDailyTopic(importedDaily);
+    if (importedGeminiKey) setGeminiApiKeyState(importedGeminiKey);
+    setHapticsEnabledState(importedHaptics);
 
     await Promise.all([
       saveToPersistentStore(STORAGE_KEYS.FOLDERS, importedFolders),
       saveToPersistentStore(STORAGE_KEYS.NOTES, importedNotes),
       saveToPersistentStore(STORAGE_KEYS.STREAK, importedStreak),
       saveToPersistentStore(STORAGE_KEYS.SR, importedSR),
+      saveToPersistentStore(STORAGE_KEYS.MARKED, importedMarked),
+      importedDaily ? saveToPersistentStore(STORAGE_KEYS.DAILY_TOPIC, importedDaily) : Promise.resolve(),
+      importedGeminiKey ? saveToPersistentStore(STORAGE_KEYS.GEMINI_KEY, importedGeminiKey) : Promise.resolve(),
+      saveToPersistentStore(STORAGE_KEYS.HAPTICS_ENABLED, importedHaptics),
     ]);
+
+    // Restore AI topic cache if present (v3+)
+    if (data.topicCache && typeof data.topicCache === 'object') {
+      const { setCachedTopics } = await import('@/lib/topicCache');
+      for (const [noteId, cacheEntry] of Object.entries(data.topicCache)) {
+        const entry = cacheEntry as { content: string; topics: any[] };
+        if (entry.content && entry.topics) {
+          await setCachedTopics(noteId, entry.content, entry.topics);
+        }
+      }
+    }
   }, []);
 
   const setGeminiApiKey = useCallback(async (key: string) => {

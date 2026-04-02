@@ -34,6 +34,8 @@ import Animated, {
 import * as Haptics from "expo-haptics";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import Markdown from "react-native-markdown-display";
+import * as ImagePicker from "expo-image-picker";
+import * as FileSystem from "expo-file-system/legacy";
 import { useNotes, parseTopics, runAiAnalysis } from "@/context/NotesContext";
 import { useTheme } from "@/context/ThemeContext";
 
@@ -49,7 +51,7 @@ const MARKDOWN_TOOLBAR = [
     { icon: "format-quote-close", wrap: ["> ", ""], placeholder: "quote" },
     { icon: "code-tags", wrap: ["`", "`"], placeholder: "code" },
     { icon: "console", wrap: ["\n```\n", "\n```\n"], placeholder: "code block" },
-    { icon: "image-outline", wrap: ["![alt text](", ")"], placeholder: "image url" },
+    { icon: "image-outline", wrap: ["", ""], placeholder: "", isImagePick: true },
 ];
 
 // Accent color palette for block card gradient bars (HEX so alpha suffixes work)
@@ -293,7 +295,7 @@ function BlockCard({
 export default function NoteEditorScreen() {
     const { id } = useLocalSearchParams<{ id: string }>();
     const insets = useSafeAreaInsets();
-    const { notes, folders, updateNote, analyzeNoteWithAI, geminiApiKey } = useNotes();
+    const { notes, folders, updateNote, analyzeNoteWithAI } = useNotes();
     const { colors: Colors } = useTheme();
 
     const note = notes.find((n) => n.id === id);
@@ -432,6 +434,43 @@ export default function NoteEditorScreen() {
         setTimeout(() => contentInputRef.current?.focus(), 50);
     };
 
+    const handleImagePick = async () => {
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+        try {
+            const result = await ImagePicker.launchImageLibraryAsync({
+                mediaTypes: ['images'],
+                quality: 0.7,
+                base64: true,
+                allowsEditing: false,
+            });
+
+            if (result.canceled || !result.assets?.[0]) return;
+
+            const asset = result.assets[0];
+            let base64Data = asset.base64;
+
+            // If base64 wasn't returned directly, read it from the file
+            if (!base64Data && asset.uri) {
+                base64Data = await FileSystem.readAsStringAsync(asset.uri, {
+                    encoding: 'base64' as any,
+                });
+            }
+
+            if (!base64Data) return;
+
+            const mimeType = asset.mimeType || 'image/jpeg';
+            const dataUri = `data:${mimeType};base64,${base64Data}`;
+            const markdownImage = `\n![image](${dataUri})\n`;
+
+            const before = content.slice(0, selectionEnd);
+            const after = content.slice(selectionEnd);
+            setContent(before + markdownImage + after);
+            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        } catch (e) {
+            console.warn('Image pick failed:', e);
+        }
+    };
+
     if (!note) {
         return (
             <View style={[styles.container, { paddingTop: topPad, backgroundColor: Colors.background }]}>
@@ -441,13 +480,13 @@ export default function NoteEditorScreen() {
     }
 
     const markdownStyles = StyleSheet.create({
-        body: { backgroundColor: "transparent" },
+        body: { backgroundColor: "transparent", color: Colors.text },
         heading1: { fontFamily: "PlayfairDisplay_700Bold", fontSize: 22, color: Colors.text, marginTop: 20, marginBottom: 8, lineHeight: 30 },
         heading2: { fontFamily: "PlayfairDisplay_700Bold", fontSize: 19, color: Colors.text, marginTop: 16, marginBottom: 6, lineHeight: 26 },
         heading3: { fontFamily: "DMSans_600SemiBold", fontSize: 17, color: Colors.text, marginTop: 14, marginBottom: 4 },
-        paragraph: { fontFamily: "DMSans_400Regular", fontSize: 15, color: Colors.textSecondary, lineHeight: 24, marginBottom: 10 },
+        paragraph: { fontFamily: "DMSans_400Regular", fontSize: 15, color: Colors.text, lineHeight: 24, marginBottom: 10 },
         strong: { fontFamily: "DMSans_600SemiBold", color: Colors.text },
-        em: { fontStyle: "italic", color: Colors.textSecondary },
+        em: { fontStyle: "italic", color: Colors.text },
         code_inline: { fontFamily: Platform.select({ ios: "Menlo", android: "monospace", default: "monospace" }), fontSize: 13, backgroundColor: Colors.surfaceElevated, color: Colors.accentLight, paddingHorizontal: 5, paddingVertical: 1, borderRadius: 4 },
         fence: { fontFamily: Platform.select({ ios: "Menlo", android: "monospace", default: "monospace" }), fontSize: 13, backgroundColor: Colors.surfaceElevated, color: Colors.accentLight, padding: 12, borderRadius: 8, borderLeftWidth: 3, borderLeftColor: Colors.accent, marginVertical: 8, lineHeight: 20 },
         blockquote: { backgroundColor: Colors.accent + "10", borderLeftWidth: 3, borderLeftColor: Colors.accent, paddingLeft: 12, paddingVertical: 6, marginVertical: 8, borderRadius: 4 },
@@ -459,6 +498,12 @@ export default function NoteEditorScreen() {
         hr: { backgroundColor: Colors.border, height: 1, marginVertical: 14 },
         link: { color: Colors.accent, textDecorationLine: "underline" },
         s: { textDecorationLine: "line-through", color: Colors.textMuted },
+        table: { borderWidth: 1, borderColor: Colors.border, borderRadius: 8, marginVertical: 8, overflow: "hidden" },
+        thead: { backgroundColor: Colors.surfaceElevated },
+        th: { fontFamily: "DMSans_600SemiBold", fontSize: 13, color: Colors.text, padding: 8, borderRightWidth: 1, borderRightColor: Colors.border },
+        tr: { borderBottomWidth: 1, borderBottomColor: Colors.border, flexDirection: "row" },
+        td: { fontFamily: "DMSans_400Regular", fontSize: 13, color: Colors.text, padding: 8, borderRightWidth: 1, borderRightColor: Colors.border, flex: 1 },
+        image: { width: Dimensions.get('window').width - 80, height: 200, borderRadius: 10, marginVertical: 8 },
     });
 
     return (
@@ -538,9 +583,15 @@ export default function NoteEditorScreen() {
                                 <TouchableOpacity
                                     key={index}
                                     style={[styles.glassToolbarBtn, { backgroundColor: Colors.card }]}
-                                    onPress={() => insertMarkdown(btn.wrap as [string, string], btn.placeholder)}
+                                    onPress={() => {
+                                        if ((btn as any).isImagePick) {
+                                            handleImagePick();
+                                        } else {
+                                            insertMarkdown(btn.wrap as [string, string], btn.placeholder);
+                                        }
+                                    }}
                                 >
-                                    <MaterialCommunityIcons name={btn.icon as any} size={20} color={Colors.accent} />
+                                    <MaterialCommunityIcons name={btn.icon as any} size={20} color={(btn as any).isImagePick ? Colors.success : Colors.accent} />
                                 </TouchableOpacity>
                             ))}
                             <View style={styles.toolbarDivider} />

@@ -16,8 +16,6 @@ import {
 import Svg, { Circle, G } from "react-native-svg";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useScrollToTop } from "@react-navigation/native";
-
-const { width: SCREEN_WIDTH } = Dimensions.get("window");
 import { router } from "expo-router";
 import Animated, { FadeInDown, FadeIn, FadeOut, LinearTransition } from "react-native-reanimated";
 import * as Haptics from "expo-haptics";
@@ -29,6 +27,8 @@ import { useTheme } from "@/context/ThemeContext";
 import FeedCard, { CARD_HEIGHT } from "@/components/FeedCard";
 import StoriesBar, { StoryItem } from "@/components/StoriesBar";
 import LivingAiIcon from "@/components/LivingAiIcon";
+
+const { width: SCREEN_WIDTH } = Dimensions.get("window");
 
 const PAGE_SIZE = 8;
 
@@ -318,6 +318,12 @@ export default function TodayScreen() {
         ...t,
         bodyRaw: t.summary || t.bodyRaw, // swap body with summary
       })));
+    } else if (selectedFolderId === '__focused__') {
+      // Focused tab: show hard-rated + bookmarked topics
+      items = allTopics.filter(item => {
+        const key = getTopicKey(item.noteId, item.topicIndex);
+        return item.lastRating === 'hard' || !!markedTopics[key];
+      });
     } else if (selectedFolderId !== null) {
       // Folder tab: pull straight from allTopics to preserve original note/block order
       items = allTopics.filter(item => item.folderId === selectedFolderId);
@@ -351,7 +357,7 @@ export default function TodayScreen() {
       ...t,
       feedKey: `disp-${i}-${t.id}`,
     }));
-  }, [feedItems, allTopics, isSummarizeMode, selectedFolderId, dailyTopic]);
+  }, [feedItems, allTopics, isSummarizeMode, selectedFolderId, dailyTopic, markedTopics]);
 
 
   const topPad = Platform.OS === "web" ? 67 : insets.top;
@@ -598,6 +604,42 @@ export default function TodayScreen() {
                     </Text>
                   </View>
                 </TouchableOpacity>
+
+                {/* Focused Tab */}
+                {(() => {
+                  const focusedCount = allTopics.filter(item => {
+                    const key = getTopicKey(item.noteId, item.topicIndex);
+                    return item.lastRating === 'hard' || !!markedTopics[key];
+                  }).length;
+                  if (focusedCount === 0) return null;
+                  const isFocusedActive = selectedFolderId === '__focused__';
+                  return (
+                    <TouchableOpacity
+                      style={styles.folderTab}
+                      onPress={() => {
+                        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                        setSelectedFolderId('__focused__');
+                        scrollToTab('__focused__');
+                      }}
+                      onLayout={(e) => {
+                        const { x, width } = e.nativeEvent.layout;
+                        setTabLayouts(prev => ({ ...prev, '__focused__': { x, width } }));
+                      }}
+                    >
+                      <View style={styles.tabInner}>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                          <Ionicons name="flame" size={13} color={isFocusedActive ? '#F43F5E' : Colors.textMuted} />
+                          <Text style={[
+                            styles.folderTabText,
+                            isFocusedActive ? { color: '#F43F5E', textShadowColor: 'rgba(244, 63, 94, 0.6)', textShadowOffset: { width: 0, height: 0 }, textShadowRadius: 8 } : { color: Colors.textMuted }
+                          ]}>
+                            Focused
+                          </Text>
+                        </View>
+                      </View>
+                    </TouchableOpacity>
+                  );
+                })()}
 
                 {/* Folder Tabs */}
                 {folders.map(folder => {

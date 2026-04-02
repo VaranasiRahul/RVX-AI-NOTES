@@ -12,6 +12,8 @@ import {
     TextInput,
     Linking,
 } from "react-native";
+import * as DocumentPicker from "expo-document-picker";
+import * as FileSystem from "expo-file-system/legacy";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Animated, { FadeIn, FadeInDown } from "react-native-reanimated";
 import { Ionicons } from "@expo/vector-icons";
@@ -73,7 +75,7 @@ function SettingsRow({ icon, label, subtitle, onPress, rightElement, Colors, dan
 
 export default function SettingsScreen() {
     const insets = useSafeAreaInsets();
-    const { exportData, importData, notes, folders, streak, topicProgress, geminiApiKey, setGeminiApiKey, hapticsEnabled, setHapticsEnabled } = useNotes();
+    const { exportData, importData, geminiApiKey, setGeminiApiKey, hapticsEnabled, setHapticsEnabled } = useNotes();
     const { colors: Colors, theme, setTheme, themeLabels, themeNames } = useTheme();
     const [notificationsEnabled, setNotificationsEnabled] = useState(false);
     const [geminiKeyInput, setGeminiKeyInput] = useState(geminiApiKey);
@@ -105,31 +107,53 @@ export default function SettingsScreen() {
     const handleImport = () => {
         Alert.alert(
             "Import Data",
-            "Paste your exported JSON to restore your data. This will OVERWRITE all current data. Are you sure?",
+            "This will OVERWRITE all current data with your backup. Select your exported backup file to restore.",
             [
                 { text: "Cancel", style: "cancel" },
                 {
-                    text: "Open Clipboard Import",
+                    text: "Select Backup File",
+                    style: "destructive",
                     onPress: async () => {
-                        Alert.alert(
-                            "Import via Clipboard",
-                            "Copy your RVX | Notes JSON backup to clipboard, then press Import.",
-                            [
-                                { text: "Cancel", style: "cancel" },
-                                {
-                                    text: "Import",
-                                    onPress: async () => {
-                                        try {
-                                            // In a real scenario, use Clipboard.getStringAsync()
-                                            // For now, show instructions
-                                            Alert.alert("How to Import", "Export your data from another device, copy the JSON text, then paste it here. Full clipboard support can be added via expo-clipboard.");
-                                        } catch {
-                                            Alert.alert("Import Failed", "Invalid backup format.");
-                                        }
-                                    },
-                                },
-                            ]
-                        );
+                        try {
+                            const result = await DocumentPicker.getDocumentAsync({
+                                type: ["application/json", "text/plain"],
+                                copyToCacheDirectory: true,
+                            });
+
+                            if (result.canceled || !result.assets || result.assets.length === 0) {
+                                return;
+                            }
+
+                            const { uri } = result.assets[0];
+                            let fileContent = "";
+
+                            if (Platform.OS === "web") {
+                                const response = await fetch(uri);
+                                fileContent = await response.text();
+                            } else {
+                                fileContent = await FileSystem.readAsStringAsync(uri);
+                            }
+
+                            if (!fileContent || fileContent.trim().length === 0) {
+                                Alert.alert("Empty File", "The selected file is empty.");
+                                return;
+                            }
+
+                            // Validate JSON
+                            const parsed = JSON.parse(fileContent);
+                            if (!parsed.folders || !parsed.notes) {
+                                Alert.alert("Invalid Backup", "The file content is not a valid RVX Notes backup.");
+                                return;
+                            }
+                            await importData(fileContent);
+                            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+                            Alert.alert(
+                                "Import Successful ✓",
+                                `Restored ${parsed.folders?.length || 0} folders, ${parsed.notes?.length || 0} notes${parsed.markedTopics ? `, ${Object.keys(parsed.markedTopics).length} bookmarks` : ""}${parsed.topicCache ? ", AI cache" : ""}.`
+                            );
+                        } catch (e: any) {
+                            Alert.alert("Import Failed", e?.message || "Invalid backup format. Make sure you selected the correct RVX backup file.");
+                        }
                     },
                 },
             ]
@@ -211,7 +235,7 @@ export default function SettingsScreen() {
                                 <Text style={[styles.guideTitle, { color: Colors.accent }]}>How to get your API Key:</Text>
                                 <Text style={[styles.guideStep, { color: Colors.text }]}>1. Go to <Text style={{ color: Colors.accent, textDecorationLine: 'underline' }} onPress={() => Linking.openURL('https://aistudio.google.com/app/apikey')}>Google AI Studio</Text></Text>
                                 <Text style={[styles.guideStep, { color: Colors.text }]}>2. Sign in with your Google Account</Text>
-                                <Text style={[styles.guideStep, { color: Colors.text }]}>3. Click "Create API key in new project"</Text>
+                                <Text style={[styles.guideStep, { color: Colors.text }]}>3. Click &quot;Create API key in new project&quot;</Text>
                                 <Text style={[styles.guideStep, { color: Colors.text }]}>4. Copy the key and paste it below</Text>
                             </View>
 
@@ -348,7 +372,7 @@ export default function SettingsScreen() {
                         <View style={{ height: 12 }} />
 
                         <Text style={[styles.legalNotice, { color: Colors.textSecondary }]}>
-                            © 2024–2026. The concepts, designs, and application "RVX Notes" are the exclusive intellectual property of Rahul Varanasi. This work is legally registered and protected by copyright law. Unauthorized reproduction, distribution, or imitation is strictly prohibited.
+                            © 2024–2026. The concepts, designs, and application &quot;RVX Notes&quot; are the exclusive intellectual property of Rahul Varanasi. This work is legally registered and protected by copyright law. Unauthorized reproduction, distribution, or imitation is strictly prohibited.
                         </Text>
 
                         <View style={{ height: 12 }} />

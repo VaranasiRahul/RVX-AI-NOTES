@@ -6,6 +6,7 @@ import {
   TouchableOpacity,
   ScrollView,
   Platform,
+  Dimensions,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { router, useLocalSearchParams } from "expo-router";
@@ -141,6 +142,7 @@ export default function TopicDetailScreen() {
     th: { fontFamily: "DMSans_600SemiBold", fontSize: 13, color: Colors.text, padding: 10, borderRightWidth: 1, borderRightColor: Colors.border },
     tr: { borderBottomWidth: 1, borderBottomColor: Colors.border, flexDirection: "row" },
     td: { fontFamily: "DMSans_400Regular", fontSize: 13, color: Colors.textSecondary, padding: 10, borderRightWidth: 1, borderRightColor: Colors.border, flex: 1 },
+    image: { width: Dimensions.get('window').width - 48, height: 200, borderRadius: 10, marginVertical: 12 },
   });
 
   const ratingButtons: { label: string; rating: SRRating | 'story'; color: string; icon: string }[] = [

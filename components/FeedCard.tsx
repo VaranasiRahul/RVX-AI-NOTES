@@ -179,6 +179,7 @@ const FeedCard = React.memo(function FeedCard({
         th: { fontFamily: "DMSans_600SemiBold", fontSize: 13, color: headingColor, padding: 8, borderRightWidth: 1, borderRightColor: Colors.border },
         tr: { borderBottomWidth: 1, borderBottomColor: Colors.border, flexDirection: "row" },
         td: { fontFamily: "DMSans_400Regular", fontSize: 13, color: textColor, padding: 8, borderRightWidth: 1, borderRightColor: Colors.border, flex: 1 },
+        image: { width: SCREEN_WIDTH - 64, height: 180, borderRadius: 8, marginVertical: 8 },
     });
 
     // ── Card surface ──────────────────────────────────────────────────────────
@@ -304,7 +305,7 @@ const FeedCard = React.memo(function FeedCard({
                 {item.isDailyPick && (
                     <View style={[styles.pickBadge, { backgroundColor: Colors.streak + '15', borderColor: Colors.streak + '35' }]}>
                         <Ionicons name="sparkles" size={10} color={Colors.streak} />
-                        <Text style={[styles.pickBadgeText, { color: Colors.streak }]}>TODAY'S PICK</Text>
+                        <Text style={[styles.pickBadgeText, { color: Colors.streak }]}>TODAY&apos;S PICK</Text>
                     </View>
                 )}
             </TouchableOpacity>

@@ -49,9 +49,9 @@ function RenameNoteModal({ visible, currentName, onClose, onRename, Colors }: {
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
       <Pressable style={styles.modalOverlay} onPress={onClose}>
         <KeyboardAvoidingView
-          behavior={Platform.OS === "ios" ? "padding" : "height"}
+          behavior={Platform.OS === "ios" ? "padding" : "padding"}
           style={styles.modalKAV}
-          keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 80}
+          keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 20}
         >
           <Pressable>
             <View style={[styles.modalSheet, { backgroundColor: Colors.surface, paddingBottom: insets.bottom + 20 }]}>
@@ -168,9 +168,9 @@ function CreateNoteModal({ visible, onClose, onCreate, Colors }: {
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
       <Pressable style={styles.modalOverlay} onPress={onClose}>
         <KeyboardAvoidingView
-          behavior={Platform.OS === "ios" ? "padding" : "height"}
+          behavior={Platform.OS === "ios" ? "padding" : "padding"}
           style={styles.modalKAV}
-          keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 80}
+          keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 20}
         >
           <Pressable>
             <View style={[styles.modalSheet, { backgroundColor: Colors.surface, paddingBottom: insets.bottom + 20 }]}>
@@ -341,7 +341,7 @@ export default function FolderDetailScreen() {
           <Pressable>
             <View style={[styles.confirmCard, { backgroundColor: Colors.surface }]}>
               <Text style={[styles.modalTitle, { color: Colors.text, marginBottom: 8 }]}>Delete Note</Text>
-              <Text style={[styles.confirmMsg, { color: Colors.textSecondary }]}>Delete "{deleteTarget?.title}"? This cannot be undone.</Text>
+              <Text style={[styles.confirmMsg, { color: Colors.textSecondary }]}>Delete &quot;{deleteTarget?.title}&quot;? This cannot be undone.</Text>
               <View style={styles.modalButtons}>
                 <TouchableOpacity style={[styles.modalBtn, { backgroundColor: Colors.card, borderColor: Colors.border, borderWidth: 1 }]} onPress={() => setDeleteTarget(null)}>
                   <Text style={[styles.modalBtnText, { color: Colors.textSecondary }]}>Cancel</Text>
@@ -427,7 +427,7 @@ const styles = StyleSheet.create({
   errorText: { fontFamily: "DMSans_400Regular", fontSize: 16, textAlign: "center", marginTop: 40 },
   // Modals
   modalOverlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.6)", justifyContent: "flex-end" },
-  modalKAV: { justifyContent: "flex-end" },
+  modalKAV: { flex: 1, justifyContent: "flex-end" },
   modalSheet: { borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 24, gap: 16 },
   modalHandle: { width: 36, height: 4, borderRadius: 2, alignSelf: "center", marginBottom: 4 },
   modalTitle: { fontFamily: "PlayfairDisplay_700Bold", fontSize: 22 },

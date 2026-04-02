@@ -47,9 +47,9 @@ function RenameModal({ visible, currentName, onClose, onRename, Colors }: {
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
       <Pressable style={styles.modalOverlay} onPress={onClose}>
         <KeyboardAvoidingView
-          behavior={Platform.OS === "ios" ? "padding" : "height"}
+          behavior={Platform.OS === "ios" ? "padding" : "padding"}
           style={styles.modalKAV}
-          keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 40}
+          keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 20}
         >
           <Pressable>
             <View style={[styles.modalSheet, { backgroundColor: Colors.surface, paddingBottom: insets.bottom + 20 }]}>
@@ -187,7 +187,7 @@ function CreateFolderModal({ visible, onClose, onCreate, Colors }: {
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
       <Pressable style={styles.modalOverlay} onPress={onClose}>
-        <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={styles.modalKAV}>
+        <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "padding"} style={styles.modalKAV}>
           <Pressable>
             <View style={[styles.modalSheet, { backgroundColor: Colors.surface, paddingBottom: insets.bottom + 20 }]}>
               <View style={[styles.modalHandle, { backgroundColor: Colors.border }]} />
@@ -482,7 +482,7 @@ const styles = StyleSheet.create({
   emptyButton: { marginTop: 8, paddingHorizontal: 24, paddingVertical: 12, borderRadius: 30 },
   emptyButtonText: { fontFamily: "DMSans_600SemiBold", fontSize: 14 },
   modalOverlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.6)", justifyContent: "flex-end" },
-  modalKAV: { justifyContent: "flex-end" },
+  modalKAV: { flex: 1, justifyContent: "flex-end" },
   modalSheet: { borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 24, gap: 16 },
   modalHandle: { width: 36, height: 4, borderRadius: 2, alignSelf: "center", marginBottom: 4 },
   modalTitle: { fontFamily: "PlayfairDisplay_700Bold", fontSize: 22 },

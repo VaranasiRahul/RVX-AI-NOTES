@@ -15,7 +15,7 @@ import { queryClient } from "@/lib/query-client";
 import { NotesProvider } from "@/context/NotesContext";
 import { ThemeProvider, useTheme } from "@/context/ThemeContext";
 import { requestNotificationPermissions, scheduleDailyReminder } from "@/lib/notifications";
-import { View } from "react-native";
+import { View , LogBox } from "react-native";
 import { registerWidgetTaskHandler } from "react-native-android-widget";
 import { widgetTaskHandler } from "@/widget/WidgetTaskHandler";
 import AnimatedSplashScreen from "@/components/AnimatedSplashScreen";
@@ -26,7 +26,6 @@ import {
   PlayfairDisplay_700Bold,
 } from "@expo-google-fonts/playfair-display";
 import { DMSans_400Regular, DMSans_500Medium, DMSans_600SemiBold, DMSans_700Bold } from "@expo-google-fonts/dm-sans";
-import { LogBox } from "react-native";
 
 SplashScreen.preventAutoHideAsync();
 
